@@ -119,12 +119,12 @@ Then upload `out_test/class_photo.jpg` (Test A) or all four `row_*.jpg` together
 
 ### Results
 
-| Test | Recognised | Unknown | Duplicate |
-|---|---|---|---|
-| A: whole-class collage (20 students) | _/20 | _ | _ |
-| B: 4 row-wise photos | _/20 | _ | _ |
+| Test | Enrolled | Result |
+|---|---|---|
+| A: whole-class collage, 20 students, model casia_iresnet50, threshold 0.261 | 20 students x 6 photos | **20/20 recognised** |
+| B: 4 row-wise photos | 20 students x 6 photos | not yet recorded |
 
-Note from development: with the earlier strict blur check, 9 students could not be enrolled. All 11 students that were enrolled were recognised; the 9 unenrolled faces were correctly reported as Unknown or flagged as Duplicate for review, not marked Present.
+Note from development: with an earlier blur check (Laplacian on the raw face region, limit 50), 9 of the 20 students could not be enrolled. In that run all 11 enrolled students were recognised, and the 9 unenrolled faces were reported as Unknown or flagged as Duplicate for review instead of being marked Present. Measuring sharpness on the aligned 112x112 face (limit 30) fixed enrollment for all 20.
 
 ## Limitations and future work
 
