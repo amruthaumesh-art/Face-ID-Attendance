@@ -57,7 +57,8 @@ backend/
   face_enrollment.py           POST /students/{id}/faces
   recognition.py               face matching for a class photo
   attendance.py                mark, row-wise merge, records, corrections, audit
-  lecturer.py                  lecturer routes
+  lecturer.py                  lecturer registration and face enrollment (PostgreSQL)
+  create_lecturer_table.py     optional: create lecturer tables manually
   dataset_tools.py             FEI test data: collage, enroll, eval
   migrate_sqlite_to_postgres.py  optional copy of old SQLite data
   models/                      casia_iresnet50.onnx (not in Git) + casia_iresnet50.json
@@ -73,7 +74,7 @@ backend/
    python -m venv venv
    .\venv\Scripts\python.exe -m pip install fastapi uvicorn python-multipart psycopg2-binary insightface onnxruntime opencv-python numpy
    ```
-3. **Download the model.** `casia_iresnet50.onnx` (175 MB) is too large for GitHub. Get it from the team's Drive and put it in `backend\models\` next to `casia_iresnet50.json`. Check it with:
+3. **Download the model.** `casia_iresnet50.onnx` (175 MB) is too large for GitHub. Get it from the team's Drive (ask the model team for the link) and put it in `backend\models\` next to `casia_iresnet50.json`. Check it with:
    ```powershell
    .\venv\Scripts\python.exe face_model.py info
    ```
@@ -107,6 +108,9 @@ The first run downloads the InsightFace detector (about 280 MB, once).
 | GET | `/attendance/{class_name}/{date}` | Attendance records |
 | PATCH | `/attendance/correct/{student_id}` | Correction within the 1-hour window |
 | GET | `/attendance/audit/{student_id}` | Correction history |
+| POST | `/lecturers/register` | Register a lecturer |
+| GET | `/lecturers/{id}` | Get a lecturer |
+| POST | `/lecturers/{id}/face` | Enroll a lecturer's face |
 
 ## Testing with the FEI dataset
 
@@ -130,7 +134,6 @@ Note from development: with an earlier blur check (Laplacian on the raw face reg
 
 - Threshold and confidence are calibrated on LFW; they should be re-tuned on real classroom photos with known attendance.
 - The trained model is weaker than buffalo_l on very small or blurry faces; back rows need row-wise photos.
-- `lecturer.py` still uses SQLite and should be moved to PostgreSQL.
 - Planned: a sessions table (two lectures of one class on the same day), lecturer login and roles, consent records, encryption of embeddings, the 95%-confidence auto-accept rule in the backend, and a React frontend.
 
 ## Privacy
