@@ -1,0 +1,11 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.db
+*.onnx
+.env
+out_test/
+results/
+backend.zip
+backend/backup_before_patch/

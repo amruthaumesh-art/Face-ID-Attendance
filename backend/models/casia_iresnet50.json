@@ -1,0 +1,12 @@
+{
+  "threshold": 0.261,
+  "platt": {
+    "a": 29.529462189462368,
+    "b": -7.673866990500352
+  },
+  "lfw_accuracy": 0.9942,
+  "far_at_threshold": 0.002,
+  "frr_at_threshold": 0.009666666666666667,
+  "best_epoch": 17,
+  "trained_on": "CASIA-WebFace, IResNet-50 + ArcFace, 20 epochs"
+}
