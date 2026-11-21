@@ -3,6 +3,8 @@ from recognition import router as recognition_router
 from face_enrollment import router as face_router
 from lecturer import router as lecturer_router
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+import os
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from pathlib import Path
@@ -16,6 +18,17 @@ app = FastAPI(
     title="Face ID Attendance System",
     description="AI-Based Automatic Classroom Attendance Backend",
     version="1.0.0"
+)
+
+# Allow a separate frontend (React / Next.js dev server) to call this API.
+# Set FRONTEND_ORIGINS="http://localhost:3000,http://192.168.1.20:3000" to restrict; default allows all (development only).
+_origins = [o.strip() for o in os.getenv("FRONTEND_ORIGINS", "*").split(",") if o.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_origins,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Create the PostgreSQL tables if they do not exist yet.
