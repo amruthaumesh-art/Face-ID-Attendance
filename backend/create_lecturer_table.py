@@ -1,21 +1,9 @@
-import sqlite3
-from pathlib import Path
+"""Create the lecturer tables in PostgreSQL.
 
-DATABASE = Path(__file__).resolve().parent / "students.db"
+The server also creates them automatically on start-up, so this is optional.
+  python create_lecturer_table.py   (DATABASE_URL must be set)
+"""
+from lecturer import init_lecturer_tables
 
-conn = sqlite3.connect(DATABASE)
-
-conn.execute("""
-CREATE TABLE IF NOT EXISTS lecturers (
-    lecturer_id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    email TEXT UNIQUE NOT NULL,
-    department TEXT NOT NULL,
-    created_at TEXT NOT NULL
-)
-""")
-
-conn.commit()
-conn.close()
-
-print("Lecturer table created successfully!")
+init_lecturer_tables()
+print("Lecturer tables created successfully in PostgreSQL!")
