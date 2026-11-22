@@ -73,7 +73,9 @@ def recognize_class_image(class_name: str, image):
         if best_score < SIMILARITY_THRESHOLD:
             unknown.append({
                 "face_number": index + 1,
-                "reason": "No sufficiently similar enrolled face"
+                "reason": "No sufficiently similar enrolled face",
+                "similarity_score": round(best_score, 4),
+                "confidence": round(face_model.confidence(best_score), 4)
             })
             continue
 

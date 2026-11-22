@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from pathlib import Path
 import psycopg2
@@ -13,6 +14,9 @@ import psycopg2
 from db import db_conn, dict_cursor, init_db
 
 FRONTEND_DIR = Path(__file__).resolve().parent / "frontend"
+# Built React website (npm run build -> copied here by the Dockerfile). Optional.
+WEB_DIR = Path(os.getenv("WEB_DIST_DIR", Path(__file__).resolve().parent / "static"))
+WEB_INDEX = WEB_DIR / "index.html"
 
 app = FastAPI(
     title="Face ID Attendance System",
@@ -43,8 +47,11 @@ class Student(BaseModel):
     class_name: str = Field(min_length=1)
 
 
-@app.get("/")
+@app.get("/", include_in_schema=False)
 def home():
+    # Hosted version: the React website. Otherwise: a simple status message.
+    if WEB_INDEX.exists():
+        return FileResponse(WEB_INDEX)
     return {
         "message": "Face ID Backend is Running!",
         "status": "success"
@@ -131,3 +138,8 @@ app.include_router(face_router)
 app.include_router(recognition_router)
 app.include_router(attendance_router)
 app.include_router(lecturer_router)
+
+# Static files of the React website (JS/CSS bundles and images), if it was built.
+for _sub in ("assets", "src"):
+    if (WEB_DIR / _sub).is_dir():
+        app.mount(f"/{_sub}", StaticFiles(directory=WEB_DIR / _sub), name=f"web-{_sub}")

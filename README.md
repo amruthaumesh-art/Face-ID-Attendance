@@ -1,3 +1,13 @@
+---
+title: FACE ID Attendance
+emoji: 📸
+colorFrom: yellow
+colorTo: red
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Face ID Attendance
 
 AI-based classroom attendance using face recognition. A lecturer uploads one whole-class photo (or several row-wise photos), the system finds every face, matches it against enrolled students, and saves Present / Absent with an audit trail.
@@ -44,12 +54,17 @@ Students are not part of the training data; they are added by enrollment. The de
 | Face detection | InsightFace SCRFD (buffalo_l) |
 | Face recognition | Own IResNet-50 ArcFace model via onnxruntime |
 | Images | OpenCV, NumPy |
-| Frontend | Single HTML/CSS/JS page served at `/app` |
+| Frontend | React + Vite + Tailwind portal (`web/`), plus a simple test page at `/app` |
 | Test data | FEI face database, via `dataset_tools.py` |
 
 ## Project structure
 
 ```
+Dockerfile                     one container: builds the website, runs the backend (Hugging Face Spaces)
+deploy_hf.py                   one-command upload to a Hugging Face Space
+web/                           React + Vite website (lecturer and admin portal)
+  src/services/liveApi.ts      connection to the backend (live mode)
+  src/services/api.ts          sample/demo data + routing to liveApi for live classes
 backend/
   main.py                      app, student registration, routers
   db.py                        PostgreSQL connection and schema (run once to create tables)
@@ -62,7 +77,7 @@ backend/
   dataset_tools.py             FEI test data: collage, enroll, eval
   migrate_sqlite_to_postgres.py  optional copy of old SQLite data
   models/                      casia_iresnet50.onnx (not in Git) + casia_iresnet50.json
-  frontend/index.html          dashboard
+  frontend/index.html          simple test dashboard (/app)
 ```
 
 ## Setup (Windows)
@@ -93,6 +108,42 @@ backend/
    Open http://127.0.0.1:8000/app. API docs are at http://127.0.0.1:8000/docs.
 
 The first run downloads the InsightFace detector (about 280 MB, once).
+
+## Website (React frontend)
+
+The `web/` folder is the lecturer/admin portal. In **live mode** it talks to this backend:
+
+| Website action | Backend call |
+|---|---|
+| Load classes and students | `GET /students` (one live class per `class_name`) |
+| Admin adds a student to a live class | `POST /students` (roll number = student ID) |
+| Admin clicks **Face** and uploads photos | `POST /students/{id}/faces` |
+| Lecturer analyses a classroom photo | `POST /attendance/mark-from-recognition/{class}` (saved) |
+| Lecturer adds a row photo | `POST /recognize/{class}` then `POST /attendance/mark` |
+| Lecturer corrects a status | `PATCH /attendance/correct/{id}` (1-hour window, audited) |
+
+Live classes are marked "(Live face recognition)". The sample PUC classes that came with the design remain as demo data (simulated results). Login is a demo login (no accounts yet).
+
+Run it locally (needs Node.js 20+), with the backend running on port 8000:
+
+```powershell
+cd web
+copy .env.example .env.local
+npm install
+npm run dev
+```
+
+Open http://localhost:3000, sign in as Lecturer, choose class **FEI-TEST**, upload `backend/out_test/class_photo.jpg`.
+
+## Hosting
+
+The site is hosted as one Docker container on **Hugging Face Spaces** (free CPU) with a hosted **PostgreSQL** database (Neon, free tier):
+
+1. Create the database on https://neon.tech and copy its connection string.
+2. Create a Hugging Face account and a *write* access token.
+3. `python deploy_hf.py YOUR_HF_USERNAME/face-id-attendance` (uploads code + model).
+4. In the Space: **Settings -> Variables and secrets -> New secret** `DATABASE_URL` = the Neon string.
+5. Enroll students (website **Face** button, or run the backend locally with `DATABASE_URL` set to Neon and use `dataset_tools.py enroll`).
 
 ## API
 
@@ -134,7 +185,8 @@ Note from development: with an earlier blur check (Laplacian on the raw face reg
 
 - Threshold and confidence are calibrated on LFW; they should be re-tuned on real classroom photos with known attendance.
 - The trained model is weaker than buffalo_l on very small or blurry faces; back rows need row-wise photos.
-- Planned: a sessions table (two lectures of one class on the same day), lecturer login and roles, consent records, encryption of embeddings, the 95%-confidence auto-accept rule in the backend, and a React frontend.
+- The website keeps captured sessions in the browser; attendance itself is saved in PostgreSQL, but the session list resets on page reload. Login is a demo login.
+- Planned: a sessions table (two lectures of one class on the same day), lecturer login and roles, consent records, encryption of embeddings, the 95%-confidence auto-accept rule in the backend, and real lecturer/admin accounts.
 
 ## Privacy
 
