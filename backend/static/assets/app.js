@@ -18,7 +18,7 @@
 
   // ---------------------------------------------------------------- icons
   var I = {
-    logo: '<svg viewBox="0 0 40 40"><rect width="40" height="40" rx="11" fill="#0fa3a3"/><path d="M10 15v-3a2 2 0 012-2h3M25 10h3a2 2 0 012 2v3M30 25v3a2 2 0 01-2 2h-3M15 30h-3a2 2 0 01-2-2v-3" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round"/><circle cx="20" cy="18" r="4" fill="#fff"/><path d="M13.5 27c1.3-3 3.6-4.4 6.5-4.4s5.2 1.4 6.5 4.4" fill="#fff"/></svg>',
+    logo: '<svg viewBox="0 0 64 64"><path d="M32 4l22 8v18c0 15-9.5 25-22 30C19.5 55 10 45 10 30V12z" fill="#a3161b"/><path d="M32 9l17 6.2V30c0 12-7.4 20.2-17 24.4C22.4 50.2 15 42 15 30V15.2z" fill="#fff"/><circle cx="32" cy="27" r="7" fill="#d9a441"/><path d="M20 46c2-7 7-10 12-10s10 3 12 10" fill="#d9a441"/><path d="M19 19h5M19 19v5M45 19h-5M45 19v5M19 43v-4M45 43v-4" stroke="#a3161b" stroke-width="2.5" stroke-linecap="round"/></svg>',
     dashboard: '<svg viewBox="0 0 64 64"><rect x="8" y="8" width="21" height="21" rx="6" fill="#4f7cf7"/><rect x="35" y="8" width="21" height="21" rx="6" fill="#22b573"/><rect x="8" y="35" width="21" height="21" rx="6" fill="#f5a524"/><rect x="35" y="35" width="21" height="21" rx="6" fill="#ef4444"/><rect x="13" y="13" width="11" height="11" rx="3" fill="#fff" opacity=".85"/><rect x="40" y="13" width="11" height="11" rx="3" fill="#fff" opacity=".85"/><rect x="13" y="40" width="11" height="11" rx="3" fill="#fff" opacity=".85"/><rect x="40" y="40" width="11" height="11" rx="3" fill="#fff" opacity=".85"/></svg>',
     students: '<svg viewBox="0 0 64 64"><circle cx="22" cy="20" r="9" fill="#f7c59f"/><path d="M13 18c0-7 5-11 10-11s9 3 9 8c-3-2-7-2-10 0-3 2-6 3-9 3z" fill="#7a3e1d"/><circle cx="42" cy="21" r="8.5" fill="#f2b48a"/><path d="M33.5 19c0-6 4-10 9-10s8.5 4 8.5 9c-4 0-8-2-10-5-2 3-5 5-7.5 6z" fill="#2b2f3a"/><path d="M8 44c0-9 6-14 14-14s14 5 14 14z" fill="#e5533d"/><path d="M28 44c0-9 6-14 14-14s14 5 14 14z" fill="#2f5bd3"/><rect x="5" y="42" width="54" height="9" rx="3" fill="#d98b3a"/><rect x="5" y="49" width="54" height="7" rx="3" fill="#b8691f"/></svg>',
     addStudent: '<svg viewBox="0 0 64 64"><circle cx="26" cy="20" r="10" fill="#f7c59f"/><path d="M16 18c0-7 5-12 11-12s10 4 10 9c-4-2-8-1-11 1s-7 2-10 2z" fill="#2b2f3a"/><path d="M8 52c0-11 8-18 18-18s18 7 18 18z" fill="#4f7cf7"/><circle cx="48" cy="44" r="12" fill="#22b573"/><path d="M48 38v12M42 44h12" stroke="#fff" stroke-width="3.5" stroke-linecap="round"/></svg>',
@@ -27,6 +27,8 @@
     take: '<svg viewBox="0 0 64 64"><rect x="8" y="12" width="48" height="44" rx="8" fill="#fff" stroke="#2b2f3a" stroke-width="3"/><path d="M8 20a8 8 0 018-8h32a8 8 0 018 8v4H8z" fill="#ef4444"/><rect x="18" y="6" width="5" height="12" rx="2.5" fill="#2b2f3a"/><rect x="41" y="6" width="5" height="12" rx="2.5" fill="#2b2f3a"/><circle cx="40" cy="42" r="11" fill="#22b573"/><path d="M35 42l4 4 7-8" stroke="#fff" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><rect x="15" y="31" width="6" height="5" rx="1.5" fill="#4f7cf7"/><rect x="15" y="40" width="6" height="5" rx="1.5" fill="#f5a524"/></svg>',
     records: '<svg viewBox="0 0 64 64"><rect x="10" y="8" width="44" height="50" rx="7" fill="#fff" stroke="#2b2f3a" stroke-width="3"/><rect x="22" y="4" width="20" height="9" rx="4" fill="#d9a441"/><rect x="18" y="22" width="7" height="7" rx="2" fill="#22b573"/><rect x="29" y="24" width="18" height="3.5" rx="1.7" fill="#9aa3b5"/><rect x="18" y="34" width="7" height="7" rx="2" fill="#ef4444"/><rect x="29" y="36" width="18" height="3.5" rx="1.7" fill="#9aa3b5"/><rect x="18" y="46" width="7" height="7" rx="2" fill="#22b573"/><rect x="29" y="48" width="14" height="3.5" rx="1.7" fill="#9aa3b5"/></svg>',
     audit: '<svg viewBox="0 0 64 64"><path d="M32 5l21 8v17c0 14-9 24-21 29C20 54 11 44 11 30V13z" fill="#ef4444"/><path d="M32 10l16 6v14c0 11-7 19-16 23-9-4-16-12-16-23V16z" fill="#fff"/><circle cx="32" cy="31" r="10" fill="none" stroke="#2b2f3a" stroke-width="3"/><path d="M32 25v6l4 3" stroke="#2b2f3a" stroke-width="3" fill="none" stroke-linecap="round"/></svg>',
+    usersAdmin: '<svg viewBox="0 0 64 64"><circle cx="24" cy="20" r="9" fill="#f7c59f"/><path d="M15 18c0-6 4-10 9-10s9 4 9 9c-4-2-8-1-11 1-2 1-5 1-7 0z" fill="#2b2f3a"/><path d="M8 50c0-10 7-16 16-16s16 6 16 16z" fill="#2f5bd3"/><circle cx="46" cy="40" r="10" fill="#d9a441"/><circle cx="46" cy="40" r="4" fill="#fff"/><path d="M46 28v4M46 48v4M34 40h4M54 40h4M37.5 31.5l2.8 2.8M51.7 45.7l2.8 2.8M37.5 48.5l2.8-2.8M51.7 34.3l2.8-2.8" stroke="#d9a441" stroke-width="3" stroke-linecap="round"/></svg>',
+    account: '<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="26" fill="#fbeceb"/><circle cx="32" cy="25" r="10" fill="#f7c59f"/><path d="M22 23c0-7 5-12 11-12s10 4 10 10c-4-2-9-2-13 0-3 1-5 2-8 2z" fill="#7a3e1d"/><path d="M14 50c3-9 10-13 18-13s15 4 18 13c-5 5-11 8-18 8s-13-3-18-8z" fill="#a3161b"/></svg>',
     back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>',
     logout: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>',
     plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
@@ -215,32 +217,30 @@
   }
 
   var NAV = [
-    { key: 'dashboard', label: 'Dashboard', icon: 'home', href: '#/dashboard', roles: ['admin', 'lecturer'] },
-    { key: 'students', label: 'Students', icon: 'users', href: '#/students', roles: ['admin'] },
-    { key: 'enroll', label: 'Add Student', icon: 'userPlus', href: '#/students/new', roles: ['admin'] },
-    { key: 'classes', label: 'Classes', icon: 'layers', href: '#/classes', roles: ['admin', 'lecturer'] },
-    { key: 'take', label: 'Take Attendance', icon: 'scan', href: '#/attendance/take', roles: ['admin', 'lecturer'] },
-    { key: 'records', label: 'Records', icon: 'clipboard', href: '#/attendance/records', roles: ['admin', 'lecturer'] },
-    { key: 'audit', label: 'Audit Log', icon: 'shield', href: '#/audit', roles: ['admin'] },
-    { key: 'users', label: 'Users', icon: 'key', href: '#/users', roles: ['admin'] },
-    { key: 'account', label: 'My Account', icon: 'user', href: '#/account', roles: ['admin', 'lecturer'] }
+    { key: 'dashboard', label: 'Dashboard', icon: 'dashboard', href: '#/dashboard', roles: ['admin', 'lecturer'] },
+    { key: 'students', label: 'Students', icon: 'students', href: '#/students', roles: ['admin'] },
+    { key: 'enroll', label: 'Add Student', icon: 'addStudent', href: '#/students/new', roles: ['admin'] },
+    { key: 'classes', label: 'Classes', icon: 'classes', href: '#/classes', roles: ['admin', 'lecturer'] },
+    { key: 'take', label: 'Take Attendance', icon: 'take', href: '#/attendance/take', roles: ['admin', 'lecturer'] },
+    { key: 'records', label: 'Records', icon: 'records', href: '#/attendance/records', roles: ['admin', 'lecturer'] },
+    { key: 'audit', label: 'Audit Log', icon: 'audit', href: '#/audit', roles: ['admin'] },
+    { key: 'users', label: 'Users', icon: 'usersAdmin', href: '#/users', roles: ['admin'] },
+    { key: 'account', label: 'My Account', icon: 'account', href: '#/account', roles: ['admin', 'lecturer'] }
   ];
 
   function layout(activeKey, inner) {
-    var nav = NAV.filter(function (n) { return n.roles.indexOf(session.role) >= 0; });
-    var current = nav.filter(function (n) { return n.key === activeKey; })[0];
-    var items = nav.map(function (n) {
+    var items = NAV.filter(function (n) { return n.roles.indexOf(session.role) >= 0; }).map(function (n) {
       return '<a class="nav-item' + (n.key === activeKey ? ' active' : '') + '" href="' + n.href + '">' +
-        '<span class="nav-ico">' + L[n.icon] + '</span><span class="nav-label">' + esc(n.label) + '</span></a>';
+        '<span class="nav-tile">' + I[n.icon] + '</span>' + esc(n.label) + '</a>';
     }).join('');
-    var d = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
-    return '<aside class="sidebar"><div class="side-brand"><span class="logo">' + I.logo + '</span><div><div class="brand-name">FACE ID</div><div class="brand-sub">' + esc(CONFIG.college) + '</div></div></div>' +
-      '<div class="nav-caption">Menu</div><nav class="nav" aria-label="Main">' + items + '</nav>' +
-      '<div class="side-foot"><span class="avatar">' + esc(initials(session.name)) + '</span><div class="side-user"><div class="user-name">' + esc(session.name) + '</div><div class="user-role">' + esc(session.role) + '</div></div>' +
-      '<button class="icon-btn" id="logout" title="Sign out" aria-label="Sign out">' + I.logout + '</button></div></aside>' +
-      '<header class="header"><div><div class="crumb">' + esc(CONFIG.campus) + '</div><div class="header-title">' + esc(current ? current.label : 'FACE ID') + '</div></div>' +
-      '<div class="header-spacer"></div><div class="header-date">' + L.calendar + esc(d) + '</div>' +
-      '<span class="role-pill">' + esc(session.role) + '</span><button class="icon-btn hdr-logout mobile-only" id="logout2" title="Sign out" aria-label="Sign out">' + I.logout + '</button></header>' +
+    return '<aside class="sidebar"><div class="logo-wrap"><div class="logo">' + I.logo + '</div></div>' +
+      '<nav class="nav" aria-label="Main">' + items + '</nav></aside>' +
+      '<header class="header"><div class="brand"><div class="brand-row"><span class="brand-name">FACE ID</span>' +
+      '<span class="chip chip-gold">Smart Attendance</span></div><div class="brand-sub">' + esc(CONFIG.college) + '</div></div>' +
+      '<div class="header-spacer"></div>' +
+      '<div class="user-chip"><span class="avatar">' + esc(initials(session.name)) + '</span><span class="user-text">' +
+      '<div class="user-name">' + esc(session.name) + '</div><div class="user-role">' + esc(session.role.toUpperCase()) + '</div></span></div>' +
+      '<button class="icon-btn" id="logout" title="Sign out" aria-label="Sign out">' + I.logout + '</button><span id="logout2" class="hidden"></span></header>' +
       '<main class="main">' + inner + '</main>';
   }
   function pageHead(title, sub, backHref, actions) {
@@ -250,7 +250,7 @@
       (actions ? '<div class="page-actions">' + actions + '</div>' : '') + '</div>';
   }
   function loadingHtml(text) { return '<div class="loading"><span class="spinner"></span>' + esc(text || 'Loading…') + '</div>'; }
-  function emptyHtml(text, icon) { var map = { students: 'users', classes: 'layers', records: 'clipboard', audit: 'shield' }; return '<div class="empty"><span class="empty-ico">' + L[map[icon || 'students'] || 'users'] + '</span><div>' + text + '</div></div>'; }
+  function emptyHtml(text, icon) { return '<div class="empty">' + (I[icon || 'students']) + '<div>' + text + '</div></div>'; }
 
   function mount(activeKey, inner) {
     stopCamera();
@@ -326,36 +326,37 @@
   function pageDashboard() {
     var isAdmin = session.role === 'admin';
     var mods = [
-      { icon: 'scan', name: 'Take Attendance', desc: 'Camera or classroom photo', href: '#/attendance/take' },
-      { icon: 'userPlus', name: 'Add Student', desc: 'Register and capture face', href: '#/students/new', admin: true },
-      { icon: 'users', name: 'Students', desc: 'Roster and face status', href: '#/students', admin: true },
-      { icon: 'layers', name: 'Classes', desc: 'Class-wise students', href: '#/classes' },
-      { icon: 'clipboard', name: 'Records', desc: 'View and correct attendance', href: '#/attendance/records' },
-      { icon: 'shield', name: 'Audit Log', desc: 'Every correction, who and why', href: '#/audit', admin: true }
+      { icon: 'students', name: 'Students', desc: 'Roster & face status', href: '#/students', admin: true },
+      { icon: 'addStudent', name: 'Add Student', desc: 'Register + capture face', href: '#/students/new', admin: true },
+      { icon: 'classes', name: 'Classes', desc: 'Class-wise students', href: '#/classes' },
+      { icon: 'take', name: 'Take Attendance', desc: 'Camera or classroom photo', href: '#/attendance/take' },
+      { icon: 'records', name: 'Records', desc: 'View & correct attendance', href: '#/attendance/records' },
+      { icon: 'audit', name: 'Audit Log', desc: 'Every correction', href: '#/audit', admin: true },
+      { icon: 'usersAdmin', name: 'Users', desc: 'Lecturer & admin accounts', href: '#/users', admin: true },
+      { icon: 'account', name: 'My Account', desc: 'Profile & password', href: '#/account' }
     ].filter(function (m) { return isAdmin || !m.admin; });
     var first = session.name.split(' ')[0];
     mount('dashboard',
-      '<section class="hero"><div><div class="eyebrow">' + greeting() + '</div><h1>Welcome back, ' + esc(first) + '</h1>' +
-      '<p>' + (isAdmin ? 'Enroll students with the camera and keep attendance records accurate.' : 'Take a classroom photo and FACE ID marks attendance for you.') + '</p></div>' +
-      '<div class="hero-actions"><a class="btn btn-primary" href="#/attendance/take">' + L.scan + 'Take attendance</a>' +
-      (isAdmin ? '<a class="btn btn-ghost" href="#/students/new">' + L.userPlus + 'Add student</a>' : '') + '</div></section>' +
+      '<section class="banner"><div class="banner-text"><div class="banner-meta"><span class="chip chip-role">' + esc(session.role.toUpperCase()) + '</span>• ' + esc(CONFIG.college) + '</div>' +
+      '<h1>' + greeting() + ', <em>' + esc(first) + '</em></h1><div class="banner-sub">' + esc(CONFIG.campus) + '</div>' +
+      '<div class="banner-desc">' + (isAdmin ? 'Manage students, enroll faces and oversee attendance records.' : 'Capture a classroom photo and the system marks attendance for you.') + '</div></div>' +
+      '<div class="banner-card"><span class="avatar">' + esc(initials(session.name)) + '</span><div><div class="user-name">' + esc(session.name) + '</div><div style="color:#f2d9d9;font-size:13px">' + esc(session.username) + '</div></div></div></section>' +
       '<div class="stats" id="stats">' + loadingHtml('Loading summary…') + '</div>' +
-      '<div class="section-title"><h2>Quick actions</h2></div>' +
-      '<div class="actions-grid">' + mods.map(function (m) {
-        return '<a class="action-card" href="' + m.href + '"><span class="action-ico">' + L[m.icon] + '</span><span class="action-text"><span class="action-name">' + esc(m.name) + '</span><span class="action-desc">' + esc(m.desc) + '</span></span><span class="action-go">' + L.arrow + '</span></a>';
+      '<div class="section-title"><h2>Your workspace</h2><span class="count-pill">' + mods.length + ' modules</span></div>' +
+      '<div class="modules">' + mods.map(function (m) {
+        return '<a class="module" href="' + m.href + '">' + I[m.icon] + '<div class="module-name">' + esc(m.name) + '</div><div class="module-desc">' + esc(m.desc) + '</div></a>';
       }).join('') + '</div>');
 
     api('/admin/stats').then(function (s) {
-      var pct = s.today_marked ? Math.round(100 * s.today_present / s.today_marked) : null;
-      var enrolledPct = s.students ? Math.round(100 * s.enrolled_students / s.students) : 0;
+      var pct = s.today_marked ? Math.round(100 * s.today_present / s.today_marked) + '%' : '—';
       var cards = [
-        ['users', s.students, 'Students', plural(s.classes, 'class').replace('classs', 'classes')],
-        ['scan', s.enrolled_students + '/' + s.students, 'Faces enrolled', enrolledPct + '% ready'],
-        ['layers', s.classes, 'Classes', s.faces + ' face photos stored'],
-        ['clipboard', pct === null ? '—' : pct + '%', 'Present today', s.today_marked ? s.today_present + ' of ' + s.today_marked + ' marked' : 'No attendance yet today']
+        ['students', '#eef3ff', s.students, 'Students'],
+        ['classes', '#fff4e5', s.classes, 'Classes'],
+        ['camera', '#e8f7ef', s.enrolled_students + ' / ' + s.students, 'Faces enrolled'],
+        ['take', '#fdecec', pct, 'Present today']
       ];
       $('#stats').innerHTML = cards.map(function (c) {
-        return '<div class="stat"><div class="stat-top"><span class="stat-label">' + c[2] + '</span><span class="stat-icon">' + L[c[0]] + '</span></div><div class="stat-value">' + esc(c[1]) + '</div><div class="stat-note">' + esc(c[3]) + '</div></div>';
+        return '<div class="stat"><div class="stat-icon" style="background:' + c[1] + '">' + I[c[0]] + '</div><div><div class="stat-value">' + esc(c[2]) + '</div><div class="stat-label">' + c[3] + '</div></div></div>';
       }).join('');
     }).catch(function (e) {
       $('#stats').innerHTML = '<div class="alert alert-err" style="grid-column:1/-1">' + esc(e.message) + '</div>';
@@ -529,10 +530,8 @@
       $('#cl-sub').textContent = CONFIG.college + ' · ' + plural(d.classes.length, 'class').replace('classs', 'classes') + ' · ' + plural(total, 'student');
       if (!d.classes.length) { $('#list').innerHTML = '<div class="panel">' + emptyHtml('No classes yet. A class appears when you add its first student.', 'classes') + '</div>'; return; }
       $('#list').innerHTML = '<div class="cards3">' + d.classes.map(function (c, i) {
-        var pct = c.students ? Math.round(100 * c.enrolled / c.students) : 0;
-        return '<a class="class-card" href="#/classes/' + encodeURIComponent(c.class_name) + '"><div class="class-top"><span class="class-badge c' + (i % 4) + '">' + esc(badgeText(c.class_name)) + '</span><span class="action-go">' + L.arrow + '</span></div>' +
-          '<div class="class-name">' + esc(c.class_name) + '</div><div class="class-meta">' + plural(c.students, 'student') + '</div>' +
-          '<div class="progress"><i style="width:' + pct + '%"></i></div><div class="class-meta small">' + c.enrolled + ' of ' + c.students + ' faces enrolled</div></a>';
+        return '<a class="class-card" href="#/classes/' + encodeURIComponent(c.class_name) + '"><div class="class-badge' + (i % 3 === 2 ? ' gold' : '') + '"><span>' + esc(badgeText(c.class_name)) + '</span></div>' +
+          '<div class="class-name">' + esc(c.class_name) + '</div><div class="class-meta">' + plural(c.students, 'student') + '</div><div class="class-meta">' + c.enrolled + ' with face enrolled</div></a>';
       }).join('') + '</div>';
     }).catch(function (e) { $('#list').innerHTML = '<div class="alert alert-err">' + esc(e.message) + '</div>'; });
   }
