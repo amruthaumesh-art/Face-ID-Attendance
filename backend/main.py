@@ -3,6 +3,7 @@ from recognition import router as recognition_router
 from face_enrollment import router as face_router
 from lecturer import router as lecturer_router
 from admin_api import router as admin_router
+import auth
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import os
@@ -38,6 +39,9 @@ app.add_middleware(
 
 # Create the PostgreSQL tables if they do not exist yet.
 init_db()
+
+# Accounts + login: every API request below needs a valid sign-in token.
+auth.install(app)
 
 
 # Student request model

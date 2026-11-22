@@ -13,11 +13,7 @@
     campus: 'Smart Classroom Attendance',
     api: '',                             // '' = same address as this page
     editWindowMinutes: 60,
-    maxEnrollShots: 6,
-    users: {                             // demo login (no accounts in the backend yet)
-      admin: { password: 'admin123', role: 'admin', name: 'Campus Administrator', email: 'admin@faceid.edu' },
-      lecturer: { password: 'lecturer123', role: 'lecturer', name: 'Class Lecturer', email: 'lecturer@faceid.edu' }
-    }
+    maxEnrollShots: 6
   };
 
   // ---------------------------------------------------------------- icons
@@ -55,6 +51,8 @@
     shield: li('<path d="M12 3l8 3v6c0 5-3.4 8.3-8 9.5C7.4 20.3 4 17 4 12V6z"/><path d="M9 12l2 2 4-4"/>'),
     arrow: li('<path d="M5 12h14M13 6l6 6-6 6"/>'),
     calendar: li('<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M8 3v4M16 3v4M3.5 10h17"/>'),
+    key: li('<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/>'),
+    user: li('<circle cx="12" cy="8" r="4"/><path d="M4 21c.8-4.2 4-6.5 8-6.5s7.2 2.3 8 6.5"/>'),
     camera: li('<path d="M4 8h3l2-3h6l2 3h3a1 1 0 011 1v10a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z"/><circle cx="12" cy="13.5" r="3.5"/>')
   };
 
@@ -142,6 +140,7 @@
     var init = { method: opts.method || 'GET', headers: {} };
     if (opts.json !== undefined) { init.headers['Content-Type'] = 'application/json'; init.body = JSON.stringify(opts.json); }
     if (opts.form) init.body = opts.form;
+    if (session && session.token) init.headers['Authorization'] = 'Bearer ' + session.token;
     return fetch(CONFIG.api + path, init).then(function (res) {
       return res.text().then(function (text) {
         var body = null;
@@ -149,7 +148,9 @@
         if (!res.ok) {
           var d = body && body.detail !== undefined ? body.detail : body;
           var msg = typeof d === 'string' ? d : Array.isArray(d) ? d.map(function (x) { return x.msg || x; }).join('; ') : 'Request failed (' + res.status + ')';
-          var err = new Error(msg); err.status = res.status; throw err;
+          var err = new Error(msg); err.status = res.status;
+          if (res.status === 401 && path.indexOf('/auth/') !== 0 && session) { signOut('Your session ended. Please sign in again.'); }
+          throw err;
         }
         return body;
       });
@@ -200,6 +201,18 @@
 
   // ---------------------------------------------------------------- session + layout
   var session = store('faceid-session');
+  function signOut(msg) {
+    stopCamera();
+    store('faceid-session', null);
+    session = null;
+    if (msg) toast(msg, true);
+    if (location.hash !== '#/login') location.hash = '#/login'; else route();
+  }
+  function startSession(res) {
+    session = { token: res.token, role: res.user.role, name: res.user.name, username: res.user.username };
+    store('faceid-session', session);
+    location.hash = '#/dashboard';
+  }
 
   var NAV = [
     { key: 'dashboard', label: 'Dashboard', icon: 'home', href: '#/dashboard', roles: ['admin', 'lecturer'] },
@@ -208,7 +221,9 @@
     { key: 'classes', label: 'Classes', icon: 'layers', href: '#/classes', roles: ['admin', 'lecturer'] },
     { key: 'take', label: 'Take Attendance', icon: 'scan', href: '#/attendance/take', roles: ['admin', 'lecturer'] },
     { key: 'records', label: 'Records', icon: 'clipboard', href: '#/attendance/records', roles: ['admin', 'lecturer'] },
-    { key: 'audit', label: 'Audit Log', icon: 'shield', href: '#/audit', roles: ['admin'] }
+    { key: 'audit', label: 'Audit Log', icon: 'shield', href: '#/audit', roles: ['admin'] },
+    { key: 'users', label: 'Users', icon: 'key', href: '#/users', roles: ['admin'] },
+    { key: 'account', label: 'My Account', icon: 'user', href: '#/account', roles: ['admin', 'lecturer'] }
   ];
 
   function layout(activeKey, inner) {
@@ -240,9 +255,8 @@
   function mount(activeKey, inner) {
     stopCamera();
     $('#app').innerHTML = layout(activeKey, inner);
-    var out = function () { store('faceid-session', null); session = null; location.hash = '#/login'; };
-    $('#logout').onclick = out;
-    $('#logout2').onclick = out;
+    $('#logout').onclick = function () { signOut(); };
+    $('#logout2').onclick = function () { signOut(); };
     window.scrollTo(0, 0);
   }
 
@@ -262,38 +276,51 @@
   // ---------------------------------------------------------------- pages
   function pageLogin() {
     stopCamera();
-    var role = 'admin';
-    $('#app').innerHTML =
-      '<div class="login"><section class="login-hero"><div class="logo">' + I.logo + '</div>' +
+    var hero = '<section class="login-hero"><div class="login-brand"><span class="logo">' + I.logo + '</span><span>FACE ID</span></div>' +
       '<h1>Attendance in<br><em>one photo.</em></h1>' +
       '<p>One classroom photo, every student recognised. AI attendance for ' + esc(CONFIG.college) + ', with lecturer review and a full audit trail.</p>' +
       '<div class="feature-list"><div>' + I.check.replace('<svg', '<svg width="20" height="20"') + ' Face detection (SCRFD) + our trained ArcFace model</div>' +
       '<div>' + I.check.replace('<svg', '<svg width="20" height="20"') + ' Enroll students with the camera in seconds</div>' +
-      '<div>' + I.check.replace('<svg', '<svg width="20" height="20"') + ' 1-hour correction window, every change audited</div></div></section>' +
-      '<section class="login-side"><form class="login-card" id="login-form" autocomplete="on">' +
-      '<h2>Sign in</h2><div class="hint">Choose your role to continue</div>' +
-      '<div class="role-pick"><button type="button" class="role-btn active" data-role="admin"><strong>Admin</strong><span>Students & records</span></button>' +
-      '<button type="button" class="role-btn" data-role="lecturer"><strong>Lecturer</strong><span>Take attendance</span></button></div>' +
-      '<div class="field"><label for="u">Username</label><input id="u" class="input" value="admin" autocomplete="username" /></div>' +
-      '<div class="field"><label for="p">Password</label><input id="p" type="password" class="input" autocomplete="current-password" /></div>' +
-      '<button class="btn btn-primary btn-block" type="submit">Sign in</button>' +
-      '<div class="demo-note">Demo accounts: <b>admin</b> / admin123 · <b>lecturer</b> / lecturer123</div>' +
-      '</form></section></div>';
-    $all('.role-btn').forEach(function (b) {
-      b.onclick = function () {
-        role = b.getAttribute('data-role');
-        $all('.role-btn').forEach(function (x) { x.classList.toggle('active', x === b); });
-        $('#u').value = role; $('#p').value = ''; $('#p').focus();
+      '<div>' + I.check.replace('<svg', '<svg width="20" height="20"') + ' 1-hour correction window, every change audited</div></div></section>';
+    $('#app').innerHTML = '<div class="login">' + hero + '<section class="login-side" id="login-side">' + loadingHtml('Connecting…') + '</section></div>';
+
+    function showLogin() {
+      $('#login-side').innerHTML = '<form class="login-card" id="login-form" autocomplete="on">' +
+        '<h2>Sign in</h2><div class="hint">Use the account given to you by the admin</div>' +
+        '<div class="field"><label for="u">Username</label><input id="u" class="input" autocomplete="username" autocapitalize="none" required /></div>' +
+        '<div class="field"><label for="p">Password</label><input id="p" type="password" class="input" autocomplete="current-password" required /></div>' +
+        '<button class="btn btn-primary btn-block" type="submit" id="go">Sign in</button>' +
+        '<div class="demo-note">Forgot your password? Ask the admin to reset it.</div></form>';
+      $('#u').focus();
+      $('#login-form').onsubmit = function (e) {
+        e.preventDefault();
+        var btn = $('#go'); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Signing in…';
+        api('/auth/login', { method: 'POST', json: { username: $('#u').value.trim(), password: $('#p').value } })
+          .then(startSession)
+          .catch(function (err) { toast(err.message, true); btn.disabled = false; btn.textContent = 'Sign in'; $('#p').select(); });
       };
-    });
-    $('#login-form').onsubmit = function (e) {
-      e.preventDefault();
-      var u = CONFIG.users[$('#u').value.trim().toLowerCase()];
-      if (!u || u.password !== $('#p').value) { toast('Wrong username or password', true); return; }
-      session = { role: u.role, name: u.name, email: u.email };
-      store('faceid-session', session);
-      location.hash = '#/dashboard';
-    };
+    }
+    function showSetup() {
+      $('#login-side').innerHTML = '<form class="login-card" id="setup-form" autocomplete="off">' +
+        '<h2>Create admin account</h2><div class="hint">First time setup. This account manages students, lecturers and records.</div>' +
+        '<div class="field"><label for="n">Your full name</label><input id="n" class="input" required /></div>' +
+        '<div class="field"><label for="u">Username</label><input id="u" class="input" placeholder="e.g. amrutha" autocapitalize="none" required /></div>' +
+        '<div class="field"><label for="p">Password</label><input id="p" type="password" class="input" autocomplete="new-password" placeholder="At least 8 characters" required /></div>' +
+        '<div class="field"><label for="p2">Confirm password</label><input id="p2" type="password" class="input" autocomplete="new-password" required /></div>' +
+        '<button class="btn btn-primary btn-block" type="submit" id="go">Create admin account</button>' +
+        '<div class="demo-note">The password is stored securely (hashed) on the server. Keep it safe.</div></form>';
+      $('#n').focus();
+      $('#setup-form').onsubmit = function (e) {
+        e.preventDefault();
+        if ($('#p').value !== $('#p2').value) { toast('Passwords do not match', true); return; }
+        var btn = $('#go'); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Creating…';
+        api('/auth/setup', { method: 'POST', json: { name: $('#n').value.trim(), username: $('#u').value.trim(), password: $('#p').value } })
+          .then(function (res) { toast('Admin account created'); startSession(res); })
+          .catch(function (err) { toast(err.message, true); btn.disabled = false; btn.textContent = 'Create admin account'; if (err.status === 409) showLogin(); });
+      };
+    }
+    api('/auth/status').then(function (st) { st.needs_setup ? showSetup() : showLogin(); })
+      .catch(function (err) { $('#login-side').innerHTML = '<div class="login-card"><div class="alert alert-err">' + esc(err.message) + '</div><button class="btn btn-ghost btn-block" onclick="location.reload()">Try again</button></div>'; });
   }
 
   function pageDashboard() {
@@ -741,8 +768,80 @@
     $('#stu').onchange = load;
   }
 
+  function pageUsers() {
+    mount('users', pageHead('Users', 'Accounts that can sign in to FACE ID', '#/dashboard') +
+      '<div class="grid2"><div class="panel"><h3>Add an account</h3><div class="hint">Give the person their username and this first password. They can change it under My Account.</div>' +
+      '<form id="new-user" autocomplete="off"><div class="field"><label for="nu-name">Full name</label><input id="nu-name" class="input" required /></div>' +
+      '<div class="field"><label for="nu-user">Username</label><input id="nu-user" class="input" placeholder="e.g. ravi.k" autocapitalize="none" required /></div>' +
+      '<div class="field"><label for="nu-role">Role</label><select id="nu-role" class="select"><option value="lecturer">Lecturer — take attendance, view records</option><option value="admin">Admin — everything</option></select></div>' +
+      '<div class="field"><label for="nu-pass">First password</label><input id="nu-pass" class="input" placeholder="At least 8 characters" required /></div>' +
+      '<button class="btn btn-primary btn-block" type="submit">' + I.plus + 'Create account</button></form></div>' +
+      '<div><div id="list">' + loadingHtml() + '</div></div></div>');
+
+    function load() {
+      api('/admin/users').then(function (d) {
+        $('#list').innerHTML = '<div class="table-wrap"><table><thead><tr><th>Account</th><th>Role</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead><tbody>' +
+          d.users.map(function (u) {
+            var me = u.username === session.username;
+            return '<tr><td><div class="who"><span class="avatar">' + esc(initials(u.name)) + '</span><div><div style="font-weight:600">' + esc(u.name) + (me ? ' <span class="pill pill-grey">You</span>' : '') + '</div><div class="mono">' + esc(u.username) + '</div></div></div></td>' +
+              '<td style="text-transform:capitalize">' + esc(u.role) + '</td>' +
+              '<td>' + (u.active ? '<span class="pill pill-green">Active</span>' : '<span class="pill pill-grey">Deactivated</span>') + '</td>' +
+              '<td><div class="actions"><button class="btn btn-ghost btn-sm" data-reset="' + u.id + '" data-name="' + esc(u.name) + '">Reset password</button>' +
+              (me ? '' : '<button class="btn ' + (u.active ? 'btn-danger' : 'btn-ghost') + ' btn-sm" data-active="' + u.id + '" data-to="' + (!u.active) + '" data-name="' + esc(u.name) + '">' + (u.active ? 'Deactivate' : 'Activate') + '</button>') +
+              '</div></td></tr>';
+          }).join('') + '</tbody></table></div>';
+        $all('[data-reset]').forEach(function (b) {
+          b.onclick = function () {
+            modal({ title: 'Reset password for ' + b.getAttribute('data-name'), text: 'Tell them the new password; they can change it later.', input: 'New password (at least 8 characters)', ok: 'Reset password' }).then(function (pw) {
+              if (!pw) return;
+              api('/admin/users/' + b.getAttribute('data-reset'), { method: 'PATCH', json: { password: pw } })
+                .then(function () { toast('Password reset'); }).catch(function (e) { toast(e.message, true); });
+            });
+          };
+        });
+        $all('[data-active]').forEach(function (b) {
+          b.onclick = function () {
+            var to = b.getAttribute('data-to') === 'true';
+            modal({ title: (to ? 'Activate ' : 'Deactivate ') + b.getAttribute('data-name') + '?', text: to ? 'They will be able to sign in again.' : 'They will be signed out and cannot sign in.', ok: to ? 'Activate' : 'Deactivate' }).then(function (ok) {
+              if (!ok) return;
+              api('/admin/users/' + b.getAttribute('data-active'), { method: 'PATCH', json: { active: to } })
+                .then(function (r) { toast(r.message); load(); }).catch(function (e) { toast(e.message, true); });
+            });
+          };
+        });
+      }).catch(function (e) { $('#list').innerHTML = '<div class="alert alert-err">' + esc(e.message) + '</div>'; });
+    }
+    $('#new-user').onsubmit = function (e) {
+      e.preventDefault();
+      api('/admin/users', { method: 'POST', json: { name: $('#nu-name').value.trim(), username: $('#nu-user').value.trim(), role: $('#nu-role').value, password: $('#nu-pass').value } })
+        .then(function (r) { toast(r.message); $('#new-user').reset(); load(); })
+        .catch(function (err) { toast(err.message, true); });
+    };
+    load();
+  }
+
+  function pageAccount() {
+    mount('account', pageHead('My Account', 'Your sign-in details', '#/dashboard') +
+      '<div class="grid2"><div class="panel"><h3>Profile</h3><div class="hint">Ask an admin to change your name or role.</div>' +
+      '<div class="who" style="display:flex;gap:14px;align-items:center"><span class="avatar" style="width:56px;height:56px;font-size:18px">' + esc(initials(session.name)) + '</span>' +
+      '<div><div style="font-weight:700;font-size:18px">' + esc(session.name) + '</div><div class="mono">' + esc(session.username) + '</div><span class="role-pill" style="display:inline-block;margin-top:6px">' + esc(session.role) + '</span></div></div></div>' +
+      '<div class="panel"><h3>Change password</h3><div class="hint">At least 8 characters.</div><form id="pw-form">' +
+      '<div class="field"><label for="cur">Current password</label><input id="cur" type="password" class="input" autocomplete="current-password" required /></div>' +
+      '<div class="field"><label for="np">New password</label><input id="np" type="password" class="input" autocomplete="new-password" required /></div>' +
+      '<div class="field"><label for="np2">Confirm new password</label><input id="np2" type="password" class="input" autocomplete="new-password" required /></div>' +
+      '<button class="btn btn-primary btn-block" type="submit">Change password</button></form></div></div>');
+    $('#pw-form').onsubmit = function (e) {
+      e.preventDefault();
+      if ($('#np').value !== $('#np2').value) { toast('New passwords do not match', true); return; }
+      api('/auth/change-password', { method: 'POST', json: { current_password: $('#cur').value, new_password: $('#np').value } })
+        .then(function () { toast('Password changed'); $('#pw-form').reset(); })
+        .catch(function (err) { toast(err.message, true); });
+    };
+  }
+
   // ---------------------------------------------------------------- router
   function route() {
+    if (session && !session.token) { store('faceid-session', null); session = null; }
     var path = (location.hash.replace(/^#/, '').split('?')[0]) || '/';
     $('#modal-root').innerHTML = '';
     if (!session) { if (path !== '/login') { location.hash = '#/login'; return; } return pageLogin(); }
@@ -757,6 +856,8 @@
     if (admin && path === '/students/new') return pageEnroll(null);
     if (admin && (m = path.match(/^\/students\/(.+)\/face$/))) return pageEnroll(decodeURIComponent(m[1]));
     if (admin && path === '/audit') return pageAudit();
+    if (admin && path === '/users') return pageUsers();
+    if (path === '/account') return pageAccount();
     location.hash = '#/dashboard';
   }
   window.addEventListener('hashchange', route);
