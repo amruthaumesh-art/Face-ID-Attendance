@@ -1,6 +1,9 @@
-# Face ID Attendance
+# FACE ID — Smart Classroom Attendance
 
-AI-based classroom attendance using face recognition. A lecturer uploads one whole-class photo (or several row-wise photos), the system finds every face, matches it against enrolled students, and saves Present / Absent with an audit trail.
+AI-based classroom attendance using face recognition. The admin registers students and captures their faces with the camera; a lecturer takes one classroom photo (or several row-wise photos); the system finds every face, matches it to the enrolled students of that class and saves Present / Absent, with a 1-hour correction window and a full audit log.
+
+**Live website:** https://amruthaumesh-art--face-id-attendance-web.us-east.modal.run
+(sign in with the account given by the admin; the first load after a quiet period takes about 30 seconds)
 
 ## How it works
 
@@ -40,115 +43,114 @@ Students are not part of the training data; they are added by enrollment. The de
 | Part | Used |
 |---|---|
 | Backend | Python, FastAPI, uvicorn |
-| Database | PostgreSQL (psycopg2) |
-| Face detection | InsightFace SCRFD (buffalo_l) |
-| Face recognition | Own IResNet-50 ArcFace model via onnxruntime |
+| Database | PostgreSQL (psycopg2) — hosted on Neon |
+| Face detection | InsightFace SCRFD (buffalo_l, pretrained) |
+| Face recognition | Own IResNet-50 ArcFace model (`casia_iresnet50.onnx`) via onnxruntime |
 | Images | OpenCV, NumPy |
-| Frontend | React + Vite + Tailwind portal (`web/`), plus a simple test page at `/app` |
-| Test data | FEI face database, via `dataset_tools.py` |
+| Website | HTML, CSS and JavaScript served by FastAPI (`backend/static/`), no build step |
+| Accounts | PBKDF2-SHA256 password hashing, HMAC-signed login tokens |
+| Hosting | Modal (serverless cloud) |
+| Test data | FEI face database |
+
+## Website
+
+Separate pages with sidebar navigation (red campus-ERP theme, works on phones):
+
+| Page | Who | What it does |
+|---|---|---|
+| Dashboard | all | Greeting, summary (students, classes, faces enrolled, present today), module cards |
+| Students | admin | Roster with face status, search, capture more faces, remove a student |
+| Add Student | admin | Student details + live camera capture (4–6 photos) on the same page; photos are checked and enrolled on save |
+| Classes | all | One card per class; class page lists students and links to attendance |
+| Take Attendance | all | Camera or upload; one photo = whole class, several photos = row-wise; shows present/absent with confidence |
+| Records | all | Saved attendance by class and date; corrections with a reason within 60 minutes, then locked |
+| Audit Log | admin | Every correction: old → new status, who, when, why |
+| Users | admin | Create lecturer/admin accounts, reset passwords, deactivate accounts |
+| My Account | all | Profile and change password |
+
+## Accounts and security
+
+- **First run:** the website asks to create the first admin account (no passwords are stored in the code).
+- **Passwords** are stored hashed (PBKDF2-SHA256, 200,000 iterations, random salt), never as plain text.
+- **Login tokens** are signed by the server (HMAC-SHA256) and expire after 12 hours.
+- **Every API request is checked** on the server: without a valid sign-in it is refused (401); lecturers are refused admin actions (403) such as registering students, enrolling faces, removing students, managing accounts and reading the audit log.
+- Deactivating an account takes effect immediately.
+- Corrections record the signed-in user's name in the audit log.
 
 ## Project structure
 
 ```
-Dockerfile                     one container: builds the website, runs the backend (Hugging Face Spaces)
-deploy_hf.py                   one-command upload to a Hugging Face Space
-web/                           React + Vite website (lecturer and admin portal)
-  src/services/liveApi.ts      connection to the backend (live mode)
-  src/services/api.ts          sample/demo data + routing to liveApi for live classes
+modal_app.py                   cloud deployment (Modal): image, secrets, web endpoint
+Dockerfile                     alternative container build (any Docker host with ~1 GB RAM)
 backend/
-  main.py                      app, student registration, routers
-  db.py                        PostgreSQL connection and schema (run once to create tables)
+  main.py                      FastAPI app: student routes, routers, serves the website
+  auth.py                      accounts, login, request guard (who may call what)
+  security.py                  password hashing + login tokens (standard library)
+  admin_api.py                 dashboard stats, student list with face counts, class summary, remove student
+  db.py                        PostgreSQL connection and schema
   face_model.py                detection + embedding + threshold + confidence (the only model code)
-  face_enrollment.py           POST /students/{id}/faces
+  face_enrollment.py           POST /students/{id}/faces with quality checks
   recognition.py               face matching for a class photo
   attendance.py                mark, row-wise merge, records, corrections, audit
-  lecturer.py                  lecturer registration and face enrollment (PostgreSQL)
-  create_lecturer_table.py     optional: create lecturer tables manually
-  dataset_tools.py             FEI test data: collage, enroll, eval
-  migrate_sqlite_to_postgres.py  optional copy of old SQLite data
-  models/                      casia_iresnet50.onnx (not in Git) + casia_iresnet50.json
-  frontend/index.html          simple test dashboard (/app)
+  lecturer.py                  lecturer routes
+  dataset_tools.py             FEI test data helpers (collage, eval)
+  models/                      casia_iresnet50.onnx (not in Git, see below) + casia_iresnet50.json
+  static/                      the website: index.html, assets/app.css, assets/app.js
 ```
-
-## Setup (Windows)
-
-1. **Install PostgreSQL** (version 17 used here), keep port 5432 and set a password for the `postgres` user.
-2. **Create the Python environment** in `backend`:
-   ```powershell
-   cd backend
-   python -m venv venv
-   .\venv\Scripts\python.exe -m pip install fastapi uvicorn python-multipart psycopg2-binary insightface onnxruntime opencv-python numpy
-   ```
-3. **Download the model.** `casia_iresnet50.onnx` (175 MB) is too large for GitHub. Get it from the team's Drive (ask the model team for the link) and put it in `backend\models\` next to `casia_iresnet50.json`. Check it with:
-   ```powershell
-   .\venv\Scripts\python.exe face_model.py info
-   ```
-4. **Set the database connection** (in every new PowerShell window):
-   ```powershell
-   $env:DATABASE_URL = "postgresql://postgres:YOURPASSWORD@localhost:5432/faceid"
-   ```
-5. **Create the database and tables:**
-   ```powershell
-   .\venv\Scripts\python.exe db.py
-   ```
-6. **Start the server:**
-   ```powershell
-   .\venv\Scripts\python.exe -m uvicorn main:app
-   ```
-   Open http://127.0.0.1:8000/app. API docs are at http://127.0.0.1:8000/docs.
-
-The first run downloads the InsightFace detector (about 280 MB, once).
-
-## Website (React frontend)
-
-The `web/` folder is the lecturer/admin portal. In **live mode** it talks to this backend:
-
-| Website action | Backend call |
-|---|---|
-| Load classes and students | `GET /students` (one live class per `class_name`) |
-| Admin adds a student to a live class | `POST /students` (roll number = student ID) |
-| Admin clicks **Face** and uploads photos | `POST /students/{id}/faces` |
-| Lecturer analyses a classroom photo | `POST /attendance/mark-from-recognition/{class}` (saved) |
-| Lecturer adds a row photo | `POST /recognize/{class}` then `POST /attendance/mark` |
-| Lecturer corrects a status | `PATCH /attendance/correct/{id}` (1-hour window, audited) |
-
-Live classes are marked "(Live face recognition)". The sample PUC classes that came with the design remain as demo data (simulated results). Login is a demo login (no accounts yet).
-
-Run it locally (needs Node.js 20+), with the backend running on port 8000:
-
-```powershell
-cd web
-copy .env.example .env.local
-npm install
-npm run dev
-```
-
-Open http://localhost:3000, sign in as Lecturer, choose class **FEI-TEST**, upload `backend/out_test/class_photo.jpg`.
 
 ## Hosting
 
-The backend serves the built website, so the whole system runs as **one server** on port 8000. It is published over **https** with **ngrok** (free static domain), which also lets the phone camera work.
+| Part | Where |
+|---|---|
+| Website + backend | Modal (serverless cloud, US East): starts on the first request, stops after 5 idle minutes |
+| Database | Neon (hosted PostgreSQL, AWS US East) |
+| Code | GitHub (this repository) |
+| Model file | Uploaded with each Modal deploy; also on Google Drive |
 
-1. Build the website once (and after every change in `web/`):
+Deploy or update (from the project folder, Windows):
+
+```powershell
+.\backend\venv\Scripts\python.exe -m pip install modal
+.\backend\venv\Scripts\python.exe -m modal setup                       # once: link your Modal account
+.\backend\venv\Scripts\python.exe -m modal secret create face-id-db "DATABASE_URL=<Neon connection URL>"   # once
+.\backend\venv\Scripts\python.exe -m modal deploy modal_app.py         # every update; the link stays the same
+```
+
+The model file `casia_iresnet50.onnx` (175 MB) is too large for GitHub. Download it from the model team's Google Drive (https://drive.google.com/file/d/1p6efSbmov4zpLmKze3Lf4w-AbPw6P2el/view) into `backend/models/` before deploying.
+
+## Run locally (Windows)
+
+1. Install PostgreSQL, or use the Neon database.
+2. Create the Python environment in `backend`:
    ```powershell
-   cd web
-   Set-Content .env.production.local "VITE_LIVE_BACKEND=true`nVITE_BACKEND_URL="
-   npm.cmd run build
-   cd ..
-   New-Item -ItemType Directory -Force backend\static | Out-Null
-   Copy-Item web\dist\* backend\static -Recurse -Force
+   cd backend
+   python -m venv venv
+   .\venv\Scripts\python.exe -m pip install -r requirements.txt
    ```
-2. Start the backend (`uvicorn main:app` with `DATABASE_URL` set). The website is at http://127.0.0.1:8000.
-3. Publish it: `ngrok http 8000` -> public link `https://<your-domain>.ngrok-free.dev`.
-
-The site is online while the laptop, the backend and ngrok are running.
-
-`Dockerfile` and `deploy_hf.py` package the same system as one container for cloud hosting (needs a host with about 1 GB RAM, e.g. Azure for Students; Hugging Face Docker Spaces now require a paid plan).
+3. Put `casia_iresnet50.onnx` in `backend\models\` and check: `.\venv\Scripts\python.exe face_model.py info`
+4. Start the server:
+   ```powershell
+   $env:DATABASE_URL = "postgresql://postgres:YOURPASSWORD@localhost:5432/faceid"
+   .\venv\Scripts\python.exe -m uvicorn main:app
+   ```
+5. Open http://localhost:8000, create the admin account, then add students with the camera. (The camera needs `localhost` or https.)
 
 ## API
 
+All endpoints except `/auth/status`, `/auth/login`, `/auth/setup` and `/health` need `Authorization: Bearer <token>`. Interactive docs: `/docs`.
+
 | Method | Path | Purpose |
 |---|---|---|
+| GET | `/auth/status` | Whether the first admin still has to be created |
+| POST | `/auth/setup` | Create the first admin (only when no accounts exist) |
+| POST | `/auth/login` | Username + password -> token |
+| GET | `/auth/me` | Signed-in user |
+| POST | `/auth/change-password` | Change own password |
+| GET/POST | `/admin/users` | List / create accounts (admin) |
+| PATCH | `/admin/users/{id}` | Rename, change role, reset password, (de)activate (admin) |
+| GET | `/admin/stats`, `/admin/students`, `/admin/classes` | Dashboard summary, students with face counts, classes |
+| DELETE | `/admin/students/{id}` | Remove a student (admin) |
+| GET | `/admin/attendance-dates/{class_name}` | Dates with saved attendance |
 | POST | `/students` | Register a student |
 | GET | `/students`, `/students/{id}` | List / get students |
 | POST | `/students/{id}/faces` | Enroll one face photo |
@@ -165,12 +167,7 @@ The site is online while the laptop, the backend and ngrok are running.
 
 ## Testing with the FEI dataset
 
-```powershell
-.\venv\Scripts\python.exe dataset_tools.py enroll  "$env:USERPROFILE\Downloads\fei"   # 20 students, class FEI-TEST
-.\venv\Scripts\python.exe dataset_tools.py collage "$env:USERPROFILE\Downloads\fei"   # out_test/class_photo.jpg, row_1..4.jpg
-```
-
-Then upload `out_test/class_photo.jpg` (Test A) or all four `row_*.jpg` together (Test B) in the dashboard for class `FEI-TEST`. The correct answer is in `out_test/who_is_in_photo.txt`. Enrollment and test images are different photos of the same people.
+Test photos are made from the FEI face database (`dataset_tools.py collage`); enrollment and test images are different photos of the same people. With login enabled, students are enrolled through the website (Add Student), and test photos are uploaded on the Take Attendance page.
 
 ### Results
 
@@ -181,13 +178,16 @@ Then upload `out_test/class_photo.jpg` (Test A) or all four `row_*.jpg` together
 
 Note from development: with an earlier blur check (Laplacian on the raw face region, limit 50), 9 of the 20 students could not be enrolled. In that run all 11 enrolled students were recognised, and the 9 unenrolled faces were reported as Unknown or flagged as Duplicate for review instead of being marked Present. Measuring sharpness on the aligned 112x112 face (limit 30) fixed enrollment for all 20.
 
+The hosted demo class **FEI-TEST** has 6 enrolled students; a 6-person test photo is recognised 6/6.
+
 ## Limitations and future work
 
 - Threshold and confidence are calibrated on LFW; they should be re-tuned on real classroom photos with known attendance.
 - The trained model is weaker than buffalo_l on very small or blurry faces; back rows need row-wise photos.
-- The website keeps captured sessions in the browser; attendance itself is saved in PostgreSQL, but the session list resets on page reload. Login is a demo login.
-- Planned: a sessions table (two lectures of one class on the same day), lecturer login and roles, consent records, encryption of embeddings, the 95%-confidence auto-accept rule in the backend, and real lecturer/admin accounts.
+- Free hosting: the first request after an idle period takes ~30 s (server start), and the free Modal credit is limited.
+- One attendance record per class per date; a sessions table (two lectures of one class on the same day) is planned.
+- Planned: consent records, encryption of stored embeddings, the 95%-confidence auto-accept rule, email password reset.
 
 ## Privacy
 
-Face embeddings are biometric data. Enroll only students who have given consent, keep the repository private, and never commit photos, `.db` files or `.env` files (see `.gitignore`).
+Face embeddings are biometric data. Enroll only students who have given consent. Photos are not stored: only the 512-number embeddings and attendance records are kept. Never commit photos, `.db` files, `.env` files or database passwords (see `.gitignore`).
