@@ -1,13 +1,3 @@
----
-title: FACE ID Attendance
-emoji: 📸
-colorFrom: yellow
-colorTo: red
-sdk: docker
-app_port: 7860
-pinned: false
----
-
 # Face ID Attendance
 
 AI-based classroom attendance using face recognition. A lecturer uploads one whole-class photo (or several row-wise photos), the system finds every face, matches it against enrolled students, and saves Present / Absent with an audit trail.
@@ -137,13 +127,23 @@ Open http://localhost:3000, sign in as Lecturer, choose class **FEI-TEST**, uplo
 
 ## Hosting
 
-The site is hosted as one Docker container on **Hugging Face Spaces** (free CPU) with a hosted **PostgreSQL** database (Neon, free tier):
+The backend serves the built website, so the whole system runs as **one server** on port 8000. It is published over **https** with **ngrok** (free static domain), which also lets the phone camera work.
 
-1. Create the database on https://neon.tech and copy its connection string.
-2. Create a Hugging Face account and a *write* access token.
-3. `python deploy_hf.py YOUR_HF_USERNAME/face-id-attendance` (uploads code + model).
-4. In the Space: **Settings -> Variables and secrets -> New secret** `DATABASE_URL` = the Neon string.
-5. Enroll students (website **Face** button, or run the backend locally with `DATABASE_URL` set to Neon and use `dataset_tools.py enroll`).
+1. Build the website once (and after every change in `web/`):
+   ```powershell
+   cd web
+   Set-Content .env.production.local "VITE_LIVE_BACKEND=true`nVITE_BACKEND_URL="
+   npm.cmd run build
+   cd ..
+   New-Item -ItemType Directory -Force backend\static | Out-Null
+   Copy-Item web\dist\* backend\static -Recurse -Force
+   ```
+2. Start the backend (`uvicorn main:app` with `DATABASE_URL` set). The website is at http://127.0.0.1:8000.
+3. Publish it: `ngrok http 8000` -> public link `https://<your-domain>.ngrok-free.dev`.
+
+The site is online while the laptop, the backend and ngrok are running.
+
+`Dockerfile` and `deploy_hf.py` package the same system as one container for cloud hosting (needs a host with about 1 GB RAM, e.g. Azure for Students; Hugging Face Docker Spaces now require a paid plan).
 
 ## API
 
