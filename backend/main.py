@@ -2,6 +2,7 @@ from attendance import router as attendance_router
 from recognition import router as recognition_router
 from face_enrollment import router as face_router
 from lecturer import router as lecturer_router
+from admin_api import router as admin_router
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import os
@@ -138,6 +139,7 @@ app.include_router(face_router)
 app.include_router(recognition_router)
 app.include_router(attendance_router)
 app.include_router(lecturer_router)
+app.include_router(admin_router)
 
 # Static files of the React website (JS/CSS bundles and images), if it was built.
 for _sub in ("assets", "src"):
