@@ -102,6 +102,99 @@
   }
   function plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
 
+  // ---------------------------------------------------------------- PU structure: year -> stream -> section
+  // Classes are stored as YEAR-STREAM-SECTION, e.g. 1PU-PCMB-A, 2PU-PCMCS-B, LT-PCMB-A
+  var YEARS = [
+    { k: '1PU', label: '1st PU', badge: '1st', desc: 'First year PU Science' },
+    { k: '2PU', label: '2nd PU', badge: '2nd', desc: 'Second year PU Science' },
+    { k: 'LT', label: 'Long Term', badge: 'LT', desc: 'Long-term batch' }
+  ];
+  var STREAMS = [
+    { k: 'PCMB', label: 'PCMB', desc: 'Physics · Chemistry · Maths · Biology' },
+    { k: 'PCMCS', label: 'PCMCs', desc: 'Physics · Chemistry · Maths · Computer Science' }
+  ];
+  var SECTIONS = ['A', 'B', 'C', 'D', 'E', 'F'];
+  var OTHER = { k: 'OTHER', label: 'Other classes', badge: '…', desc: 'Classes outside the PU structure' };
+  function yearOf(k) { return YEARS.filter(function (y) { return y.k === k; })[0] || OTHER; }
+  function streamOf(k) { return STREAMS.filter(function (x) { return x.k === k; })[0] || { k: k, label: k, desc: '' }; }
+  function parseClass(n) {
+    var m = /^(1PU|2PU|LT)-(PCMB|PCMCS)-([A-Z0-9]{1,3})$/.exec(String(n || '').toUpperCase());
+    return m ? { year: m[1], stream: m[2], section: m[3] } : null;
+  }
+  function makeClass(y, st, sec) { return y + '-' + st + '-' + sec; }
+  function classLabel(n) {
+    var p = parseClass(n);
+    return p ? yearOf(p.year).label + ' · ' + streamOf(p.stream).label + ' · Section ' + p.section : String(n);
+  }
+  function classShort(n) {
+    var p = parseClass(n);
+    return p ? yearOf(p.year).label + ' ' + streamOf(p.stream).label + '-' + p.section : String(n);
+  }
+  function uniq(a) { return a.filter(function (x, i) { return a.indexOf(x) === i; }); }
+  function opt(v, label, sel) { return '<option value="' + esc(v) + '"' + (sel ? ' selected' : '') + '>' + esc(label) + '</option>'; }
+  function cardGrid(items) {
+    return '<div class="cards3">' + items.map(function (it) {
+      var b = String(it.badge);
+      return '<a class="class-card" href="' + it.href + '"><div class="class-badge' + (it.gold ? ' gold' : '') + '"><span' + (b.length > 2 ? ' class="sm"' : '') + '>' + esc(b) + '</span></div>' +
+        '<div class="class-name">' + esc(it.title) + '</div>' + (it.lines || []).map(function (l) { return '<div class="class-meta">' + esc(l) + '</div>'; }).join('') + '</a>';
+    }).join('') + '</div>';
+  }
+
+  // Year / Stream / Section dropdowns. classNames = existing classes.
+  // opts.allowNew: offer all sections (for adding students); otherwise only classes that exist.
+  function pickerHtml(id, inline) {
+    return '<div class="picker' + (inline ? ' inline' : '') + '" id="' + id + '">' +
+      '<div class="field"><label>Year</label><select class="select" data-p="year"></select></div>' +
+      '<div class="field" data-f="stream"><label>Stream</label><select class="select" data-p="stream"></select></div>' +
+      '<div class="field"><label data-l="section">Section</label><select class="select" data-p="section"></select></div></div>';
+  }
+  function bindPicker(id, classNames, opts) {
+    opts = opts || {};
+    var root = $('#' + id), ys = $('[data-p=year]', root), ss = $('[data-p=stream]', root), xs = $('[data-p=section]', root);
+    var parsed = classNames.map(parseClass).filter(Boolean);
+    var others = classNames.filter(function (c) { return !parseClass(c); }).sort();
+    var sel = parseClass(opts.selected);
+    ys.innerHTML = YEARS.map(function (y) { return opt(y.k, y.label); }).join('') + (!opts.allowNew && others.length ? opt('OTHER', OTHER.label) : '');
+    ss.innerHTML = STREAMS.map(function (x) { return opt(x.k, x.label + ' (' + x.desc.replace(/ · /g, ', ') + ')'); }).join('');
+    if (sel) { ys.value = sel.year; ss.value = sel.stream; }
+    else if (opts.selected && others.indexOf(opts.selected) >= 0) ys.value = 'OTHER';
+    else {
+      if (opts.year) ys.value = opts.year;
+      if (opts.stream) ss.value = opts.stream;
+      if (!opts.year && !opts.allowNew) {
+        var first = parsed.slice().sort(function (a, b) { return makeClass(a.year, a.stream, a.section) < makeClass(b.year, b.stream, b.section) ? -1 : 1; })[0];
+        if (first) { ys.value = first.year; ss.value = first.stream; } else if (others.length) ys.value = 'OTHER';
+      }
+    }
+    function fill(keep) {
+      var other = ys.value === 'OTHER';
+      $('[data-f=stream]', root).classList.toggle('hidden', other);
+      $('[data-l=section]', root).textContent = other ? 'Class' : 'Section';
+      var list;
+      if (other) list = others.map(function (c) { return [c, c]; });
+      else {
+        var have = parsed.filter(function (p) { return p.year === ys.value && p.stream === ss.value; }).map(function (p) { return p.section; });
+        var secs = opts.allowNew ? uniq(SECTIONS.concat(have)).sort() : uniq(have).sort();
+        list = secs.map(function (x) { return [x, 'Section ' + x + (opts.allowNew && have.indexOf(x) < 0 ? ' (new)' : '')]; });
+      }
+      xs.innerHTML = list.length ? list.map(function (o) { return opt(o[0], o[1]); }).join('') : '<option value="">No classes yet</option>';
+      if (keep && list.some(function (o) { return o[0] === keep; })) xs.value = keep;
+    }
+    fill(sel ? sel.section : opts.selected);
+    function changed() { if (opts.onChange) opts.onChange(api_.value()); }
+    ys.onchange = function () { fill(); changed(); };
+    ss.onchange = function () { fill(); changed(); };
+    xs.onchange = changed;
+    var api_ = {
+      value: function () {
+        if (ys.value === 'OTHER') return xs.value;
+        return xs.value ? makeClass(ys.value, ss.value, xs.value) : '';
+      },
+      disable: function (on) { [ys, ss, xs].forEach(function (e) { e.disabled = on; }); }
+    };
+    return api_;
+  }
+
   var toastTimer;
   function toast(msg, isErr) {
     var t = $('#toast');
@@ -238,8 +331,10 @@
       '<header class="header"><div class="brand"><div class="brand-row"><span class="brand-name">FACE ID</span>' +
       '<span class="chip chip-gold">Smart Attendance</span></div><div class="brand-sub">' + esc(CONFIG.college) + '</div></div>' +
       '<div class="header-spacer"></div>' +
-      '<div class="user-chip"><span class="avatar">' + esc(initials(session.name)) + '</span><span class="user-text">' +
-      '<div class="user-name">' + esc(session.name) + '</div><div class="user-role">' + esc(session.role.toUpperCase()) + '</div></span></div>' +
+      '<div class="umenu-wrap"><button type="button" class="user-chip" id="umenu-btn" aria-haspopup="true" aria-expanded="false"><span class="avatar">' + esc(initials(session.name)) + '</span><span class="user-text">' +
+      '<div class="user-name">' + esc(session.name) + '</div><div class="user-role">' + esc(session.role.toUpperCase()) + '</div></span>' +
+      '<svg class="chev" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></button>' +
+      '<div class="umenu hidden" id="umenu" role="menu"></div></div>' +
       '<button class="icon-btn" id="logout" title="Sign out" aria-label="Sign out">' + I.logout + '</button><span id="logout2" class="hidden"></span></header>' +
       '<main class="main">' + inner + '</main>';
   }
@@ -256,6 +351,7 @@
     stopCamera();
     $('#app').innerHTML = layout(activeKey, inner);
     $('#logout').onclick = function () { signOut(); };
+    $('#umenu-btn').onclick = function (e) { e.stopPropagation(); toggleUserMenu(); };
     $('#logout2').onclick = function () { signOut(); };
     window.scrollTo(0, 0);
   }
@@ -264,7 +360,7 @@
     return (placeholder ? '<option value="">' + esc(placeholder) + '</option>' : '') +
       classes.map(function (c) {
         var n = c.class_name || c;
-        return '<option value="' + esc(n) + '"' + (n === selected ? ' selected' : '') + '>' + esc(n) + '</option>';
+        return '<option value="' + esc(n) + '"' + (n === selected ? ' selected' : '') + '>' + esc(classShort(n)) + '</option>';
       }).join('');
   }
   function query() {
@@ -272,6 +368,58 @@
     s.split('&').forEach(function (kv) { if (!kv) return; var p = kv.split('='); q[decodeURIComponent(p[0])] = decodeURIComponent(p[1] || ''); });
     return q;
   }
+
+
+  // ---------------------------------------------------------------- account menu (top right)
+  function roleBadge(role) { return '<span class="role-badge role-' + esc(role) + '">' + esc(String(role).toUpperCase()) + '</span>'; }
+  function closeUserMenu() {
+    var m = $('#umenu'); if (!m) return;
+    m.classList.add('hidden'); $('#umenu-btn').setAttribute('aria-expanded', 'false');
+  }
+  function toggleUserMenu() {
+    var m = $('#umenu');
+    if (!m.classList.contains('hidden')) { closeUserMenu(); return; }
+    m.classList.remove('hidden'); $('#umenu-btn').setAttribute('aria-expanded', 'true');
+    var me = { name: session.name, username: session.username, role: session.role, active: true };
+    function draw(users) {
+      m.innerHTML = '<div class="umenu-head"><span><b>&#10022;</b> ' + (session.role === 'admin' ? 'Switch account' : 'Signed in as') + '</span>' +
+        '<span class="mono">' + plural(users.length, 'account') + '</span></div><div class="umenu-list">' +
+        users.map(function (u) {
+          var cur = u.username === session.username;
+          return '<button type="button" class="umenu-item' + (cur ? ' current' : '') + (u.active === false ? ' off' : '') + '" data-switch="' + esc(u.username) + '" data-name="' + esc(u.name) + '">' +
+            '<span class="um-text"><span class="um-name">' + esc(u.name) + (cur ? ' <span class="um-tick">&#10003;</span>' : '') + '</span><span class="um-user mono">' + esc(u.username) + (u.active === false ? ' · deactivated' : '') + '</span></span>' + roleBadge(u.role) + '</button>';
+        }).join('') + '</div><div class="umenu-foot"><a href="#/account" role="menuitem">' + I.account.replace('<svg', '<svg width="22" height="22"') + 'My Account</a>' +
+        (session.role === 'admin' ? '<a href="#/users" role="menuitem">' + I.usersAdmin.replace('<svg', '<svg width="22" height="22"') + 'Users &amp; roles</a>' : '') +
+        '<button type="button" id="um-out" role="menuitem">' + I.logout.replace('<svg', '<svg width="18" height="18"') + 'Sign out</button></div>';
+      $all('[data-switch]', m).forEach(function (b) {
+        b.onclick = function () {
+          var un = b.getAttribute('data-switch');
+          if (un === session.username) { closeUserMenu(); return; }
+          closeUserMenu();
+          modal({ title: 'Switch to ' + b.getAttribute('data-name') + '?', text: 'You will be signed out. Sign in as ' + un + ' with that account\'s password.', ok: 'Switch account' }).then(function (ok) {
+            if (!ok) return;
+            store('faceid-prefill', un);
+            signOut();
+          });
+        };
+      });
+      $all('a', m).forEach(function (a) { a.onclick = closeUserMenu; });
+      $('#um-out').onclick = function () { signOut(); };
+    }
+    draw([me]);
+    if (session.role === 'admin') {
+      api('/admin/users').then(function (d) {
+        if (m.classList.contains('hidden')) return;
+        var list = d.users.slice().sort(function (a, b) { return (a.username === session.username ? -1 : 0) - (b.username === session.username ? -1 : 0) || a.role.localeCompare(b.role) || a.name.localeCompare(b.name); });
+        draw(list);
+      }).catch(function () {});
+    }
+  }
+  document.addEventListener('click', function (e) {
+    var w = e.target.closest ? e.target.closest('.umenu-wrap') : null;
+    if (!w) closeUserMenu();
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeUserMenu(); });
 
   // ---------------------------------------------------------------- pages
   function pageLogin() {
@@ -291,7 +439,9 @@
         '<div class="field"><label for="p">Password</label><input id="p" type="password" class="input" autocomplete="current-password" required /></div>' +
         '<button class="btn btn-primary btn-block" type="submit" id="go">Sign in</button>' +
         '<div class="demo-note">Forgot your password? Ask the admin to reset it.</div></form>';
-      $('#u').focus();
+      var pre = store('faceid-prefill');
+      store('faceid-prefill', null);
+      if (pre) { $('#u').value = pre; $('#p').focus(); } else $('#u').focus();
       $('#login-form').onsubmit = function (e) {
         e.preventDefault();
         var btn = $('#go'); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Signing in…';
@@ -363,33 +513,41 @@
     });
   }
 
-  function pageStudents() {
-    var q = query();
-    mount('students', pageHead('Students', '<span id="st-sub">Loading…</span>', '#/dashboard',
-      '<a class="btn btn-primary" href="#/students/new">' + I.plus + 'Add student</a>') +
-      '<div class="toolbar"><input id="search" class="input" placeholder="Search name or ID…" />' +
-      '<select id="cls" class="select"></select></div><div id="list">' + loadingHtml() + '</div>');
+  // Students: years -> streams -> list
+  function pageStudents(year, stream) {
+    var isList = year === 'OTHER' || (year && stream);
+    var y = yearOf(year), st = streamOf(stream);
+    var title = !year ? 'Students' : year === 'OTHER' ? OTHER.label : stream ? y.label + ' · ' + st.label : y.label + ' Students';
+    var back = !year ? '#/dashboard' : (stream ? '#/students/y/' + year : '#/students');
+    var addHref = '#/students/new' + (year && year !== 'OTHER' ? '?year=' + year + (stream ? '&stream=' + stream : '') : '');
+    mount('students', pageHead(title, '<span id="st-sub">Loading…</span>', back,
+      '<a class="btn btn-primary" href="' + addHref + '">' + I.plus + 'Add student</a>') +
+      (isList ? '<div class="toolbar"><input id="search" class="input" placeholder="Search name or ID…" /><select id="sec" class="select"></select></div>' : '') +
+      '<div id="list">' + loadingHtml() + '</div>');
 
-    var all = [];
+    var all = [], rows = [];
+    function inYear(s, yk) { var p = parseClass(s.class_name); return yk === 'OTHER' ? !p : p && p.year === yk; }
     function draw() {
-      var s = $('#search').value.trim().toLowerCase(), c = $('#cls').value;
-      var rows = all.filter(function (st) {
-        return (!c || st.class_name === c) && (!s || st.name.toLowerCase().indexOf(s) >= 0 || st.student_id.toLowerCase().indexOf(s) >= 0);
+      var q = $('#search').value.trim().toLowerCase(), c = $('#sec').value;
+      var shown = rows.filter(function (x) {
+        return (!c || x.class_name === c) && (!q || x.name.toLowerCase().indexOf(q) >= 0 || x.student_id.toLowerCase().indexOf(q) >= 0);
       });
-      if (!rows.length) { $('#list').innerHTML = '<div class="table-wrap">' + emptyHtml(all.length ? 'No students match.' : 'No students yet. Add your first student and capture their face.') + '</div>'; return; }
-      $('#list').innerHTML = '<div class="table-wrap"><table><thead><tr><th>Student</th><th class="hide-sm">ID</th><th>Class</th><th>Face</th><th style="text-align:right">Actions</th></tr></thead><tbody>' +
-        rows.map(function (st) {
-          var face = st.face_count > 0
-            ? '<span class="pill pill-green">' + I.check.replace('<svg', '<svg width="14" height="14"') + st.face_count + ' photo' + (st.face_count > 1 ? 's' : '') + '</span>'
+      if (!shown.length) { $('#list').innerHTML = '<div class="table-wrap">' + emptyHtml(rows.length ? 'No students match.' : 'No students here yet. Click Add student to register one and capture their face.') + '</div>'; return; }
+      $('#list').innerHTML = '<div class="table-wrap"><table><thead><tr><th>Student</th><th class="hide-sm">ID</th><th>' + (year === 'OTHER' ? 'Class' : 'Section') + '</th><th>Face</th><th style="text-align:right">Actions</th></tr></thead><tbody>' +
+        shown.map(function (x) {
+          var p = parseClass(x.class_name);
+          var face = x.face_count > 0
+            ? '<span class="pill pill-green">' + I.check.replace('<svg', '<svg width="14" height="14"') + x.face_count + ' photo' + (x.face_count > 1 ? 's' : '') + '</span>'
             : '<span class="pill pill-amber">Not enrolled</span>';
-          return '<tr><td><div class="who"><span class="avatar">' + esc(initials(st.name)) + '</span><div><div style="font-weight:600">' + esc(st.name) + '</div><div class="mono">' + esc(st.email || '') + '</div></div></div></td>' +
-            '<td class="mono hide-sm">' + esc(st.student_id) + '</td><td>' + esc(st.class_name) + '</td><td>' + face + '</td>' +
-            '<td><div class="actions"><a class="btn btn-ghost btn-sm" href="#/students/' + encodeURIComponent(st.student_id) + '/face">' + I.cam + 'Capture face</a>' +
-            '<button class="btn btn-danger btn-sm" data-del="' + esc(st.student_id) + '" data-name="' + esc(st.name) + '">' + I.trash + '<span class="hide-sm">Remove</span></button></div></td></tr>';
+          return '<tr><td><div class="who"><span class="avatar">' + esc(initials(x.name)) + '</span><div><div style="font-weight:600">' + esc(x.name) + '</div><div class="mono">' + esc(x.email || '') + '</div></div></div></td>' +
+            '<td class="mono hide-sm">' + esc(x.student_id) + '</td><td>' + esc(p ? 'Section ' + p.section : x.class_name) + '</td><td>' + face + '</td>' +
+            '<td><div class="actions"><a class="btn btn-ghost btn-sm" href="#/students/' + encodeURIComponent(x.student_id) + '/face">' + I.cam + '<span class="hide-sm">Capture face</span></a>' +
+            '<a class="btn btn-ghost btn-sm" href="#/students/' + encodeURIComponent(x.student_id) + '/edit">Edit</a>' +
+            '<button class="btn btn-danger btn-sm" data-del="' + esc(x.student_id) + '" data-name="' + esc(x.name) + '">' + I.trash + '<span class="hide-sm">Remove</span></button></div></td></tr>';
         }).join('') + '</tbody></table></div>';
-      $all('[data-del]').forEach(function (b) {
-        b.onclick = function () {
-          var id = b.getAttribute('data-del'), name = b.getAttribute('data-name');
+      $all('[data-del]').forEach(function (bt) {
+        bt.onclick = function () {
+          var id = bt.getAttribute('data-del'), name = bt.getAttribute('data-name');
           modal({ title: 'Remove ' + name + '?', text: 'Their face data and attendance records are deleted. Audit history is kept.', ok: 'Remove', danger: true }).then(function (ok) {
             if (!ok) return;
             api('/admin/students/' + encodeURIComponent(id), { method: 'DELETE' }).then(function (r) { toast(r.message); load(); }).catch(function (e) { toast(e.message, true); });
@@ -400,29 +558,123 @@
     function load() {
       api('/admin/students').then(function (d) {
         all = d.students;
-        var classes = []; all.forEach(function (s) { if (classes.indexOf(s.class_name) < 0) classes.push(s.class_name); });
-        var keep = $('#cls').value || q['class'] || '';
-        $('#cls').innerHTML = classOptions(classes, keep, 'All classes');
-        var enrolled = all.filter(function (s) { return s.face_count > 0; }).length;
-        $('#st-sub').textContent = plural(all.length, 'student') + ' · ' + plural(classes.length, 'class').replace('classs', 'classes') + ' · ' + enrolled + ' with face enrolled';
+        if (!year) {
+          var items = YEARS.map(function (yy, i) {
+            var list = all.filter(function (x) { return inYear(x, yy.k); });
+            var secs = uniq(list.map(function (x) { return x.class_name; })).length;
+            return { href: '#/students/y/' + yy.k, badge: yy.badge, gold: i === 2, title: yy.label + ' · ' + yy.desc, lines: [plural(secs, 'class').replace('classs', 'classes') + ' · ' + plural(list.length, 'student')] };
+          });
+          var oth = all.filter(function (x) { return !parseClass(x.class_name); });
+          if (oth.length) items.push({ href: '#/students/y/OTHER', badge: OTHER.badge, title: OTHER.label, lines: [plural(oth.length, 'student')] });
+          $('#st-sub').textContent = CONFIG.college + ' · ' + plural(all.length, 'student');
+          $('#list').innerHTML = cardGrid(items);
+          return;
+        }
+        if (!isList) {
+          var yl = all.filter(function (x) { return inYear(x, year); });
+          $('#st-sub').textContent = y.desc + ' · ' + plural(yl.length, 'student');
+          $('#list').innerHTML = cardGrid(STREAMS.map(function (ss, i) {
+            var list = yl.filter(function (x) { return parseClass(x.class_name).stream === ss.k; });
+            var secs = uniq(list.map(function (x) { return x.class_name; })).length;
+            return { href: '#/students/y/' + year + '/' + ss.k, badge: ss.label, gold: i === 1, title: ss.label + ' · ' + y.label, lines: [ss.desc, plural(secs, 'section') + ' · ' + plural(list.length, 'student')] };
+          }));
+          return;
+        }
+        rows = all.filter(function (x) {
+          var p = parseClass(x.class_name);
+          return year === 'OTHER' ? !p : p && p.year === year && p.stream === stream;
+        });
+        var classes = uniq(rows.map(function (x) { return x.class_name; })).sort();
+        var keep = $('#sec').value;
+        $('#sec').innerHTML = opt('', year === 'OTHER' ? 'All classes' : 'All sections') + classes.map(function (c) { var p = parseClass(c); return opt(c, p ? 'Section ' + p.section : c, c === keep); }).join('');
+        var enrolled = rows.filter(function (x) { return x.face_count > 0; }).length;
+        $('#st-sub').textContent = (year === 'OTHER' ? '' : st.desc + ' · ') + plural(rows.length, 'student') + ' · ' + enrolled + ' with face enrolled';
         draw();
       }).catch(function (e) { $('#list').innerHTML = '<div class="alert alert-err">' + esc(e.message) + '</div>'; });
     }
-    $('#search').oninput = draw;
-    $('#cls').onchange = draw;
+    if (isList) { $('#search').oninput = draw; $('#sec').onchange = draw; }
     load();
+  }
+
+  // Edit a student's name or class (year / stream / section)
+  function pageEdit(id) {
+    mount('students', pageHead('Edit Student', '<span id="ed-sub">' + esc(id) + '</span>', '#/students') +
+      '<div class="panel" style="max-width:760px"><h3>Student details</h3><div class="hint">Changing the class moves the student\'s attendance history with them.</div>' +
+      '<div class="field"><label for="ename">Full name</label><input id="ename" class="input" /></div>' +
+      '<div id="epick-wrap">' + loadingHtml() + '</div>' +
+      '<div class="row" style="margin-top:8px"><button class="btn btn-primary" id="esave">' + I.check + 'Save changes</button><a class="btn btn-ghost" id="ecancel" href="#/students">Cancel</a></div></div>');
+    Promise.all([api('/admin/students'), api('/admin/classes')]).then(function (r) {
+      var stu = r[0].students.filter(function (x) { return x.student_id === id; })[0];
+      if (!stu) { $('#epick-wrap').innerHTML = '<div class="alert alert-err">Student not found.</div>'; return; }
+      var p = parseClass(stu.class_name);
+      var back = p ? '#/students/y/' + p.year + '/' + p.stream : '#/students/y/OTHER';
+      $('.back').setAttribute('href', back); $('#ecancel').setAttribute('href', back);
+      $('#ename').value = stu.name;
+      $('#ed-sub').textContent = stu.student_id + ' · currently ' + classLabel(stu.class_name);
+      $('#epick-wrap').innerHTML = pickerHtml('epick');
+      var pk = bindPicker('epick', r[1].classes.map(function (c) { return c.class_name; }), { allowNew: true, selected: p ? stu.class_name : '' });
+      $('#esave').onclick = function () {
+        var cls = pk.value(), name = $('#ename').value.trim();
+        if (!name || !cls) { toast('Enter the name and choose year, stream and section', true); return; }
+        api('/admin/students/' + encodeURIComponent(id), { method: 'PATCH', json: { name: name, class_name: cls } }).then(function (res) {
+          toast(res.message + ' · ' + classLabel(res.class_name));
+          var q = parseClass(res.class_name);
+          location.hash = q ? '#/students/y/' + q.year + '/' + q.stream : '#/students';
+        }).catch(function (e) { toast(e.message, true); });
+      };
+    }).catch(function (e) { $('#epick-wrap').innerHTML = '<div class="alert alert-err">' + esc(e.message) + '</div>'; });
+  }
+
+  function stepsBar(n) {
+    return '<div class="steps"><div class="step' + (n === 1 ? ' active' : ' done') + '"><span>1</span>Student details</div>' +
+      '<div class="step-line"></div><div class="step' + (n === 2 ? ' active' : '') + '"><span>2</span>Capture face</div></div>';
+  }
+
+  // Add Student, page 1: details -> registers the student -> page 2 (capture face)
+  function pageAddStudent() {
+    var q = query();
+    mount('enroll', pageHead('Add Student', 'Step 1 of 2 · Enter the student\'s details', '#/students') + stepsBar(1) +
+      '<div class="panel" style="max-width:820px"><h3>Student details</h3><div class="hint">Use the roll number as the Student ID. Next, you will capture the student\'s face.</div>' +
+      '<div class="row"><div class="field"><label for="sid">Student ID / Roll number</label><input id="sid" class="input" placeholder="e.g. 26PU1001" /></div>' +
+      '<div class="field"><label for="sname">Full name</label><input id="sname" class="input" placeholder="Student name" /></div></div>' +
+      '<div id="pick-wrap">' + loadingHtml() + '</div>' +
+      '<div class="field"><label for="semail">Email (optional)</label><input id="semail" class="input" type="email" placeholder="student@example.com" /></div>' +
+      '<div class="row" style="justify-content:flex-end"><a class="btn btn-ghost" href="#/students">Cancel</a>' +
+      '<button class="btn btn-primary" id="next">Next: Capture face ' + L.arrow.replace('<svg', '<svg width="18" height="18"') + '</button></div></div>');
+    var picker = null;
+    function done(names) {
+      $('#pick-wrap').innerHTML = pickerHtml('pick');
+      picker = bindPicker('pick', names, { allowNew: true, selected: q['class'], year: q.year, stream: q.stream });
+    }
+    api('/admin/classes').then(function (d) { done(d.classes.map(function (c) { return c.class_name; })); }).catch(function () { done([]); });
+    $('#sid').focus();
+    $('#next').onclick = function () {
+      var sid = $('#sid').value.trim().toUpperCase(), name = $('#sname').value.trim(), cls = picker ? picker.value() : '';
+      if (!sid || !name || !cls) { toast('Fill Student ID and name, and choose year, stream and section', true); return; }
+      var btn = $('#next'); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Saving…';
+      api('/students', { method: 'POST', json: { student_id: sid, name: name, class_name: cls, email: ($('#semail').value.trim() || null) } })
+        .then(function () { toast(name + ' registered. Now capture the face.'); location.hash = '#/students/' + encodeURIComponent(sid) + '/face?step=2'; })
+        .catch(function (e) {
+          toast(e.status === 409 ? 'Student ID ' + sid + ' already exists. Open it from Students → Capture face.' : e.message, true);
+          btn.disabled = false; btn.innerHTML = 'Next: Capture face ' + L.arrow.replace('<svg', '<svg width="18" height="18"');
+        });
+    };
   }
 
   // Add student (new) or capture more faces for an existing student
   function pageEnroll(existingId) {
     var isNew = !existingId;
+    var picker = null;
+    var savedClass = '';
     var shots = []; // {blob, url, status, note}
-    mount(isNew ? 'enroll' : 'students',
-      pageHead(isNew ? 'Add Student' : 'Capture Face', isNew ? 'Register the student and capture their face with the camera' : 'Add face photos for <b id="who">' + esc(existingId) + '</b>', isNew ? '#/dashboard' : '#/students') +
+    var fromStep1 = query().step === '2';
+    mount(fromStep1 ? 'enroll' : 'students',
+      pageHead(fromStep1 ? 'Add Student' : 'Capture Face', (fromStep1 ? 'Step 2 of 2 · Capture face for ' : 'Add face photos for ') + '<b id="who">' + esc(existingId) + '</b>', fromStep1 ? '#/students/new' : '#/students') +
+      (fromStep1 ? stepsBar(2) : '') +
       '<div class="grid2"><div class="panel"><h3>1 · Student details</h3><div class="hint">' + (isNew ? 'Use the roll number as the Student ID.' : 'This student is already registered.') + '</div>' +
       '<div class="field"><label for="sid">Student ID / Roll number</label><input id="sid" class="input" placeholder="e.g. 23DS001" ' + (isNew ? '' : 'disabled') + ' /></div>' +
       '<div class="field"><label for="sname">Full name</label><input id="sname" class="input" placeholder="Student name" ' + (isNew ? '' : 'disabled') + ' /></div>' +
-      '<div class="field"><label for="scls">Class</label><input id="scls" class="input" list="cls-list" placeholder="e.g. BSc-DS-A" ' + (isNew ? '' : 'disabled') + ' /><datalist id="cls-list"></datalist></div>' +
+      (isNew ? '<div id="pick-wrap">' + loadingHtml() + '</div>' : '<div class="field"><label for="scls">Class</label><input id="scls" class="input" disabled /></div>') +
       (isNew ? '<div class="field"><label for="semail">Email (optional)</label><input id="semail" class="input" type="email" placeholder="student@example.com" /></div>' : '') +
       '<ul class="tips"><li>Only one person in front of the camera, face fully visible.</li><li>Good light on the face, no strong light behind.</li><li>Take 4–6 photos: straight, slightly left, slightly right, slightly up.</li><li>Remove glasses or masks if possible.</li></ul></div>' +
       '<div class="panel"><h3>2 · Capture face</h3><div class="hint">Photos are checked and enrolled when you save.</div>' +
@@ -439,14 +691,17 @@
       api('/admin/students').then(function (d) {
         var st = d.students.filter(function (s) { return s.student_id === existingId; })[0];
         if (!st) { $('#msg').innerHTML = '<div class="alert alert-err">Student not found.</div>'; return; }
-        $('#sid').value = st.student_id; $('#sname').value = st.name; $('#scls').value = st.class_name;
+        $('#sid').value = st.student_id; $('#sname').value = st.name; $('#scls').value = classLabel(st.class_name); savedClass = st.class_name;
         $('#who').textContent = st.name + ' (' + st.student_id + ') · ' + st.face_count + ' photo(s) enrolled';
       }).catch(function (e) { toast(e.message, true); });
     } else {
-      api('/admin/classes').then(function (d) {
-        $('#cls-list').innerHTML = d.classes.map(function (c) { return '<option value="' + esc(c.class_name) + '">'; }).join('');
-        var q = query(); if (q['class']) $('#scls').value = q['class'];
-      }).catch(function () {});
+      var finishPicker = function (names) {
+        var q = query();
+        $('#pick-wrap').innerHTML = pickerHtml('pick');
+        picker = bindPicker('pick', names, { allowNew: true, selected: q['class'], year: q.year, stream: q.stream });
+      };
+      api('/admin/classes').then(function (d) { finishPicker(d.classes.map(function (c) { return c.class_name; })); })
+        .catch(function () { finishPicker([]); });
     }
 
     function drawShots() {
@@ -480,8 +735,9 @@
     $('#file').onchange = function (e) { Array.prototype.forEach.call(e.target.files, function (f) { addBlob(f); }); e.target.value = ''; };
 
     $('#save').onclick = function () {
-      var sid = $('#sid').value.trim().toUpperCase(), name = $('#sname').value.trim(), cls = $('#scls').value.trim();
-      if (!sid || !name || !cls) { toast('Fill Student ID, name and class first', true); return; }
+      var sid = $('#sid').value.trim().toUpperCase(), name = $('#sname').value.trim();
+      var cls = isNew ? (picker ? picker.value() : '') : savedClass || 'existing';
+      if (!sid || !name || !cls) { toast('Fill Student ID and name, and choose year, stream and section', true); return; }
       var btn = $('#save'); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Saving…';
       $('#msg').innerHTML = '';
       var first = isNew
@@ -489,8 +745,10 @@
           .catch(function (e) { if (e.status === 409) throw new Error('Student ID ' + sid + ' already exists. Open it from Students → Capture face.'); throw e; })
         : Promise.resolve();
       first.then(function () {
+        if (isNew) savedClass = cls;
         isNew = false;
-        $('#sid').disabled = $('#sname').disabled = $('#scls').disabled = true;
+        $('#sid').disabled = $('#sname').disabled = true;
+        if (picker) picker.disable(true);
         var pending = shots.filter(function (s) { return !s.status; });
         return pending.reduce(function (p, s) {
           return p.then(function () {
@@ -505,7 +763,8 @@
         if (ok && !bad.length) {
           stopCamera();
           toast(name + ': ' + ok + ' face photo(s) enrolled');
-          location.hash = '#/students';
+          var pc = parseClass(savedClass);
+          location.hash = pc ? '#/students/y/' + pc.year + '/' + pc.stream : '#/students';
           return;
         }
         $('#msg').innerHTML =
@@ -522,23 +781,57 @@
     };
   }
 
-  function pageClasses() {
-    var add = session.role === 'admin' ? '<a class="btn btn-primary" href="#/students/new">' + I.plus + 'Add student to new class</a>' : '';
-    mount('classes', pageHead('Classes', '<span id="cl-sub">Loading…</span>', '#/dashboard', add) + '<div id="list">' + loadingHtml() + '</div>');
+  function pageClasses(year, stream) {
+    var y = yearOf(year), st = streamOf(stream);
+    var title = !year ? 'Classes' : year === 'OTHER' ? OTHER.label : stream ? y.label + ' · ' + st.label : y.label + ' Classes';
+    var back = !year ? '#/dashboard' : (stream ? '#/classes/y/' + year : '#/classes');
+    var add = session.role === 'admin'
+      ? '<a class="btn btn-primary" href="#/students/new' + (year && year !== 'OTHER' ? '?year=' + year + (stream ? '&stream=' + stream : '') : '') + '">' + I.plus + 'Add student</a>' : '';
+    mount('classes', pageHead(title, '<span id="cl-sub">Loading…</span>', back, add) + '<div id="list">' + loadingHtml() + '</div>');
     api('/admin/classes').then(function (d) {
-      var total = d.classes.reduce(function (a, c) { return a + c.students; }, 0);
-      $('#cl-sub').textContent = CONFIG.college + ' · ' + plural(d.classes.length, 'class').replace('classs', 'classes') + ' · ' + plural(total, 'student');
-      if (!d.classes.length) { $('#list').innerHTML = '<div class="panel">' + emptyHtml('No classes yet. A class appears when you add its first student.', 'classes') + '</div>'; return; }
-      $('#list').innerHTML = '<div class="cards3">' + d.classes.map(function (c, i) {
-        return '<a class="class-card" href="#/classes/' + encodeURIComponent(c.class_name) + '"><div class="class-badge' + (i % 3 === 2 ? ' gold' : '') + '"><span>' + esc(badgeText(c.class_name)) + '</span></div>' +
-          '<div class="class-name">' + esc(c.class_name) + '</div><div class="class-meta">' + plural(c.students, 'student') + '</div><div class="class-meta">' + c.enrolled + ' with face enrolled</div></a>';
-      }).join('') + '</div>';
+      var cls = d.classes;
+      function sum(list, k) { return list.reduce(function (a, c) { return a + c[k]; }, 0); }
+      function inYear(c, yk) { var p = parseClass(c.class_name); return yk === 'OTHER' ? !p : p && p.year === yk; }
+      if (!year) {
+        var items = YEARS.map(function (yy, i) {
+          var list = cls.filter(function (c) { return inYear(c, yy.k); });
+          return { href: '#/classes/y/' + yy.k, badge: yy.badge, gold: i === 2, title: yy.label + ' · ' + yy.desc,
+            lines: [plural(list.length, 'section') + ' · PCMB & PCMCs', plural(sum(list, 'students'), 'student')] };
+        });
+        var oth = cls.filter(function (c) { return !parseClass(c.class_name); });
+        if (oth.length) items.push({ href: '#/classes/y/OTHER', badge: OTHER.badge, title: OTHER.label, lines: [plural(oth.length, 'class').replace('classs', 'classes'), plural(sum(oth, 'students'), 'student')] });
+        $('#cl-sub').textContent = CONFIG.college + ' · ' + plural(cls.length, 'class').replace('classs', 'classes') + ' · ' + plural(sum(cls, 'students'), 'student');
+        $('#list').innerHTML = cardGrid(items);
+        return;
+      }
+      if (year !== 'OTHER' && !stream) {
+        var yl = cls.filter(function (c) { return inYear(c, year); });
+        $('#cl-sub').textContent = y.desc + ' · ' + plural(yl.length, 'section');
+        $('#list').innerHTML = cardGrid(STREAMS.map(function (ss, i) {
+          var list = yl.filter(function (c) { return parseClass(c.class_name).stream === ss.k; });
+          return { href: '#/classes/y/' + year + '/' + ss.k, badge: ss.label, gold: i === 1, title: ss.label + ' · ' + y.label,
+            lines: [ss.desc, plural(list.length, 'section') + ' · ' + plural(sum(list, 'students'), 'student')] };
+        }));
+        return;
+      }
+      var list = cls.filter(function (c) {
+        var p = parseClass(c.class_name);
+        return year === 'OTHER' ? !p : p && p.year === year && p.stream === stream;
+      });
+      $('#cl-sub').textContent = (year === 'OTHER' ? '' : st.desc + ' · ') + plural(list.length, 'section') + ' · ' + plural(sum(list, 'students'), 'student');
+      if (!list.length) { $('#list').innerHTML = '<div class="panel">' + emptyHtml('No sections yet. A section appears when you add its first student.', 'classes') + '</div>'; return; }
+      $('#list').innerHTML = cardGrid(list.map(function (c, i) {
+        var p = parseClass(c.class_name);
+        return { href: '#/classes/' + encodeURIComponent(c.class_name), badge: p ? p.section : badgeText(c.class_name), gold: i % 3 === 2,
+          title: p ? 'Section ' + p.section : c.class_name, lines: [plural(c.students, 'student'), c.enrolled + ' with face enrolled'] };
+      }));
     }).catch(function (e) { $('#list').innerHTML = '<div class="alert alert-err">' + esc(e.message) + '</div>'; });
   }
 
   function pageClass(name) {
     var isAdmin = session.role === 'admin';
-    mount('classes', pageHead(name, '<span id="c-sub">Loading…</span>', '#/classes',
+    var pcl = parseClass(name);
+    mount('classes', pageHead(classLabel(name), '<span id="c-sub">Loading…</span>', pcl ? '#/classes/y/' + pcl.year + '/' + pcl.stream : '#/classes/y/OTHER',
       '<a class="btn btn-gold" href="#/attendance/take?class=' + encodeURIComponent(name) + '">' + I.cam + 'Take attendance</a>' +
       '<a class="btn btn-ghost" href="#/attendance/records?class=' + encodeURIComponent(name) + '">Records</a>' +
       (isAdmin ? '<a class="btn btn-primary" href="#/students/new?class=' + encodeURIComponent(name) + '">' + I.plus + 'Add student</a>' : '')) +
@@ -563,7 +856,7 @@
     var mode = 'camera';
     mount('take', pageHead('Take Attendance', 'Capture or upload the classroom photo. Students are recognised and attendance is saved.', '#/dashboard') +
       '<div class="grid2"><div class="panel"><h3>1 · Session</h3><div class="hint">Choose the class and date.</div>' +
-      '<div class="field"><label for="cls">Class</label><select id="cls" class="select"><option>Loading…</option></select></div>' +
+      '<div id="tpick-wrap">' + loadingHtml() + '</div>' +
       '<div class="field"><label for="date">Date</label><input id="date" type="date" class="input" value="' + (q.date || today()) + '" /></div>' +
       '<div class="alert alert-warn" style="font-weight:500">Attendance for a class and date can be changed for ' + CONFIG.editWindowMinutes + ' minutes after it is first saved. After that it is locked.</div>' +
       '<ul class="tips"><li>Whole class in one photo works for small rooms.</li><li>For big rooms take one photo per row and analyse them together.</li><li>Faces should be clear and not too small.</li></ul></div>' +
@@ -579,10 +872,11 @@
       '<button class="btn btn-primary btn-block" id="go" style="margin-top:16px" disabled>' + I.check + 'Analyze & save attendance</button></div></div>' +
       '<div id="result" style="margin-top:22px"></div>');
 
+    var tpick = null;
     api('/admin/classes').then(function (d) {
-      if (!d.classes.length) { $('#cls').innerHTML = '<option value="">No classes yet</option>'; return; }
-      $('#cls').innerHTML = classOptions(d.classes, q['class'] || d.classes[0].class_name);
-    }).catch(function (e) { toast(e.message, true); });
+      $('#tpick-wrap').innerHTML = pickerHtml('tpick');
+      tpick = bindPicker('tpick', d.classes.map(function (c) { return c.class_name; }), { selected: q['class'] });
+    }).catch(function (e) { $('#tpick-wrap').innerHTML = '<div class="alert alert-err">' + esc(e.message) + '</div>'; });
 
     var facing = 'environment';
     function drawShots() {
@@ -625,8 +919,8 @@
     drawShots();
 
     $('#go').onclick = function () {
-      var cls = $('#cls').value, date = $('#date').value;
-      if (!cls) { toast('Choose a class', true); return; }
+      var cls = tpick ? tpick.value() : '', date = $('#date').value;
+      if (!cls) { toast('Choose year, stream and section', true); return; }
       if (!date) { toast('Choose a date', true); return; }
       var btn = $('#go'); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Recognising faces… (10–40 s)';
       var qs = '?attendance_date=' + encodeURIComponent(date) + '&confirm_review=true';
@@ -661,7 +955,7 @@
       [rec.duplicate_matches || 0, 'Duplicates']
     ];
     $('#result').innerHTML = '<div class="panel"><div class="page-head" style="margin-bottom:6px"><div><h2 class="page-title" style="font-size:22px">Attendance saved</h2>' +
-      '<div class="page-sub">' + esc(cls) + ' · ' + fmtDate(date) + (rec.model ? ' · model ' + esc(rec.model) : '') + '</div></div>' +
+      '<div class="page-sub">' + esc(classLabel(cls)) + ' · ' + fmtDate(date) + (rec.model ? ' · model ' + esc(rec.model) : '') + '</div></div>' +
       '<div class="page-actions"><a class="btn btn-primary" href="#/attendance/records?class=' + encodeURIComponent(cls) + '&date=' + date + '">Review & correct</a></div></div>' +
       (flags.length ? '<div class="alert alert-warn">Please review: ' + esc(flags.join(' · ')) + '</div>' : '<div class="alert alert-ok">' + I.check.replace('<svg', '<svg width="18" height="18"') + ' All faces matched enrolled students.</div>') +
       '<div class="result-stats">' + stats.map(function (s) { return '<div class="mini"><div class="v">' + esc(s[0]) + '</div><div class="l">' + s[1] + '</div></div>'; }).join('') + '</div>' +
@@ -681,7 +975,7 @@
   function pageRecords() {
     var q = query();
     mount('records', pageHead('Attendance Records', 'View saved attendance and correct mistakes within ' + CONFIG.editWindowMinutes + ' minutes', '#/dashboard') +
-      '<div class="toolbar"><select id="cls" class="select"><option>Loading…</option></select><select id="dates" class="select"></select>' +
+      '<div class="toolbar"><div id="rpick-wrap">' + loadingHtml() + '</div><select id="dates" class="select"></select>' +
       '<input id="date" type="date" class="input" value="' + (q.date || '') + '" title="Or pick any date" /></div>' +
       '<div id="list"></div>');
 
@@ -697,11 +991,11 @@
       });
     }
     function load() {
-      var cls = $('#cls').value, date = $('#date').value;
+      var cls = rpick ? rpick.value() : '', date = $('#date').value;
       if (!cls || !date) { $('#list').innerHTML = '<div class="panel">' + emptyHtml('Choose a class and a date.', 'records') + '</div>'; return; }
       $('#list').innerHTML = loadingHtml();
       api('/attendance/' + encodeURIComponent(cls) + '/' + date).then(function (d) {
-        if (!d.records.length) { $('#list').innerHTML = '<div class="panel">' + emptyHtml('No attendance saved for ' + esc(cls) + ' on ' + fmtDate(date) + '.', 'records') + '</div>'; return; }
+        if (!d.records.length) { $('#list').innerHTML = '<div class="panel">' + emptyHtml('No attendance saved for ' + esc(classLabel(cls)) + ' on ' + fmtDate(date) + '.', 'records') + '</div>'; return; }
         var marked = d.records.map(function (r) { return r.marked_at; }).filter(Boolean).sort()[0];
         var deadline = marked ? new Date(new Date(marked).getTime() + CONFIG.editWindowMinutes * 60000) : null;
         var locked = !deadline || Date.now() > deadline.getTime();
@@ -731,12 +1025,15 @@
         });
       }).catch(function (e) { $('#list').innerHTML = '<div class="alert alert-err">' + esc(e.message) + '</div>'; });
     }
+    var rpick = null;
     api('/admin/classes').then(function (d) {
-      if (!d.classes.length) { $('#cls').innerHTML = '<option value="">No classes</option>'; load(); return; }
-      $('#cls').innerHTML = classOptions(d.classes, q['class'] || d.classes[0].class_name);
-      loadDates($('#cls').value, q.date);
+      $('#rpick-wrap').innerHTML = pickerHtml('rpick', true);
+      rpick = bindPicker('rpick', d.classes.map(function (c) { return c.class_name; }), {
+        selected: q['class'],
+        onChange: function (v) { if (v) loadDates(v); else { $('#dates').innerHTML = ''; $('#date').value = ''; load(); } }
+      });
+      if (rpick.value()) loadDates(rpick.value(), q.date); else load();
     }).catch(function (e) { toast(e.message, true); });
-    $('#cls').onchange = function () { loadDates($('#cls').value); };
     $('#dates').onchange = function () { $('#date').value = $('#dates').value; load(); };
     $('#date').onchange = load;
   }
@@ -760,7 +1057,7 @@
     }
     api('/admin/students').then(function (d) {
       $('#stu').innerHTML = d.students.length ? d.students.map(function (s) {
-        return '<option value="' + esc(s.student_id) + '">' + esc(s.name) + ' (' + esc(s.student_id) + ') · ' + esc(s.class_name) + '</option>';
+        return '<option value="' + esc(s.student_id) + '">' + esc(s.name) + ' (' + esc(s.student_id) + ') · ' + esc(classShort(s.class_name)) + '</option>';
       }).join('') : '<option value="">No students</option>';
       load();
     }).catch(function (e) { toast(e.message, true); });
@@ -848,11 +1145,14 @@
     var admin = session.role === 'admin', m;
     if (path === '/dashboard') return pageDashboard();
     if (path === '/classes') return pageClasses();
+    if ((m = path.match(/^\/classes\/y\/(1PU|2PU|LT|OTHER)(?:\/(PCMB|PCMCS))?$/))) return pageClasses(m[1], m[2]);
     if ((m = path.match(/^\/classes\/(.+)$/))) return pageClass(decodeURIComponent(m[1]));
     if (path === '/attendance/take') return pageTake();
     if (path === '/attendance/records') return pageRecords();
     if (admin && path === '/students') return pageStudents();
-    if (admin && path === '/students/new') return pageEnroll(null);
+    if (admin && (m = path.match(/^\/students\/y\/(1PU|2PU|LT|OTHER)(?:\/(PCMB|PCMCS))?$/))) return pageStudents(m[1], m[2]);
+    if (admin && (m = path.match(/^\/students\/(.+)\/edit$/))) return pageEdit(decodeURIComponent(m[1]));
+    if (admin && path === '/students/new') return pageAddStudent();
     if (admin && (m = path.match(/^\/students\/(.+)\/face$/))) return pageEnroll(decodeURIComponent(m[1]));
     if (admin && path === '/audit') return pageAudit();
     if (admin && path === '/users') return pageUsers();

@@ -299,7 +299,7 @@ def _needs_admin(path: str, method: str) -> bool:
         return True
     if path.startswith("/attendance/audit/"):
         return True
-    if method == "DELETE" and path.startswith("/admin/students/"):
+    if method in ("DELETE", "PATCH") and path.startswith("/admin/students/"):
         return True
     if method == "POST" and (path == "/students" or (path.startswith("/students/") and path.endswith("/faces"))):
         return True

@@ -5,11 +5,14 @@ Admin helper endpoints for the website (FACE ID portal).
   GET    /admin/students                   students with their enrolled face count
   GET    /admin/classes                    one row per class: students, enrolled students
   DELETE /admin/students/{student_id}      remove a student (faces + attendance; audit history kept)
+  PATCH  /admin/students/{student_id}      change name and/or class (attendance moves with the student)
   GET    /admin/attendance-dates/{class}   dates that have saved attendance for a class
 """
 from datetime import date
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+import psycopg2
 
 from db import db_conn, dict_cursor
 
@@ -131,3 +134,46 @@ def admin_attendance_dates(class_name: str):
             for d, p, t, m in rows
         ],
     }
+
+
+class StudentUpdate(BaseModel):
+    name: str | None = None
+    class_name: str | None = None
+
+
+@router.patch("/admin/students/{student_id}")
+def admin_update_student(student_id: str, data: StudentUpdate):
+    name = (data.name or "").strip()
+    cls = (data.class_name or "").strip()
+    if not name and not cls:
+        raise HTTPException(status_code=400, detail="Nothing to change")
+    with db_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT name, class_name FROM students WHERE student_id = %s", (student_id,))
+        row = cur.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Student not found")
+        new_name = name or row[0]
+        new_cls = cls or row[1]
+        cur.execute(
+            "UPDATE students SET name = %s, class_name = %s WHERE student_id = %s",
+            (new_name, new_cls, student_id),
+        )
+        if new_cls != row[1]:
+            try:
+                _move_attendance(cur, student_id, row[1], new_cls)
+            except psycopg2.errors.UniqueViolation:
+                raise HTTPException(status_code=409, detail="This student already has attendance in that class on the same date. Remove one of them first.")
+    return {"message": f"Saved {new_name}", "student_id": student_id, "name": new_name, "class_name": new_cls}
+
+
+def _move_attendance(cur, student_id, old_cls, new_cls):
+    """Attendance and audit history follow the student to the new class."""
+    cur.execute(
+        "UPDATE attendance SET class_name = %s WHERE student_id = %s AND class_name = %s",
+        (new_cls, student_id, old_cls),
+    )
+    cur.execute(
+        "UPDATE attendance_audit SET class_name = %s WHERE student_id = %s AND class_name = %s",
+        (new_cls, student_id, old_cls),
+    )
