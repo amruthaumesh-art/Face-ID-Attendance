@@ -15,6 +15,11 @@ Every other API request needs  Authorization: Bearer <token>.
 Admin-only: student registration and face enrollment, removing students,
 account management, audit history, lecturer routes.
 Student accounts are linked to one student_id and can only read their own attendance.
+
+LOGIN_REQUIRED (env var, default "0" = off for now):
+  off -> no sign-in. The website sends X-View-Role (admin / lecturer / student) and,
+         for the student view, X-View-Student. The same role rules are still applied.
+  on  -> normal username + password sign-in (set LOGIN_REQUIRED=1 and redeploy).
 """
 import os
 import secrets as pysecrets
@@ -29,6 +34,9 @@ import security
 from db import db_conn, dict_cursor
 
 router = APIRouter()
+
+LOGIN_REQUIRED = os.getenv("LOGIN_REQUIRED", "0").strip().lower() in ("1", "true", "yes", "on")
+VIEW_NAMES = {"admin": "Admin", "lecturer": "Professor"}
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS users (
@@ -191,7 +199,18 @@ def auth_status():
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) FROM users")
         n = cur.fetchone()[0]
-    return {"needs_setup": n == 0}
+    return {"needs_setup": n == 0 and LOGIN_REQUIRED, "login_required": LOGIN_REQUIRED}
+
+
+@router.get("/auth/view-people")
+def view_people():
+    """No-login mode only: the students the top dropdown can switch to."""
+    if LOGIN_REQUIRED:
+        raise HTTPException(status_code=403, detail="Sign-in is turned on")
+    with db_conn() as conn:
+        cur = dict_cursor(conn)
+        cur.execute("SELECT student_id, name, class_name FROM students ORDER BY class_name, name")
+        return {"students": [dict(r) for r in cur.fetchall()]}
 
 
 @router.post("/auth/setup")
@@ -234,9 +253,11 @@ def auth_me(request: Request):
 
 @router.post("/auth/change-password")
 def auth_change_password(data: PasswordChange, request: Request):
+    if not LOGIN_REQUIRED:
+        raise HTTPException(status_code=400, detail="Sign-in is turned off, so there is no password to change")
     me = request.state.user
     row = _get_user(me["username"])
-    if not security.verify_password(data.current_password or "", row["password_hash"]):
+    if row is None or not security.verify_password(data.current_password or "", row["password_hash"]):
         raise HTTPException(status_code=400, detail="Current password is wrong")
     try:
         security.check_password(data.new_password)
@@ -360,7 +381,7 @@ def my_attendance(request: Request):
 
 
 # ---------------------------------------------------------------- request guard
-PUBLIC_EXACT = {"/", "/health", "/app", "/auth/status", "/auth/login", "/auth/setup",
+PUBLIC_EXACT = {"/", "/health", "/app", "/auth/status", "/auth/login", "/auth/setup", "/auth/view-people",
                 "/docs", "/redoc", "/openapi.json", "/favicon.ico"}
 PUBLIC_PREFIX = ("/assets/", "/src/", "/docs/")
 
@@ -383,6 +404,19 @@ def _needs_admin(path: str, method: str) -> bool:
     return False
 
 
+def _view_user(request: Request) -> dict:
+    """No-login mode: act as the role picked in the website's top dropdown."""
+    role = request.headers.get("x-view-role", "admin").strip().lower()
+    if role not in ROLES:
+        role = "admin"
+    sid = request.headers.get("x-view-student", "").strip().upper() or None
+    return {
+        "id": 0, "username": role, "name": VIEW_NAMES.get(role, sid or "Student"), "role": role,
+        "student_id": sid if role == "student" else None, "active": True,
+        "created_at": None, "last_login": None,
+    }
+
+
 def install(app):
     """Create tables, add the routes and protect every other request."""
     init_auth_tables()
@@ -393,9 +427,12 @@ def install(app):
         path = request.url.path
         if request.method == "OPTIONS" or _is_public(path):
             return await call_next(request)
-        header = request.headers.get("authorization", "")
-        token = header[7:].strip() if header.lower().startswith("bearer ") else ""
-        user = await run_in_threadpool(user_from_token, token) if token else None
+        if not LOGIN_REQUIRED:
+            user = _view_user(request)
+        else:
+            header = request.headers.get("authorization", "")
+            token = header[7:].strip() if header.lower().startswith("bearer ") else ""
+            user = await run_in_threadpool(user_from_token, token) if token else None
         if user is None:
             return JSONResponse({"detail": "Please sign in again"}, status_code=401)
         if user["role"] == "student" and not path.startswith(("/auth/", "/me/")):

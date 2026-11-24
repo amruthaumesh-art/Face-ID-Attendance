@@ -236,6 +236,10 @@
     if (opts.json !== undefined) { init.headers['Content-Type'] = 'application/json'; init.body = JSON.stringify(opts.json); }
     if (opts.form) init.body = opts.form;
     if (session && session.token) init.headers['Authorization'] = 'Bearer ' + session.token;
+    if (VIEW_MODE && session) {
+      init.headers['X-View-Role'] = session.role;
+      if (session.student_id) init.headers['X-View-Student'] = session.student_id;
+    }
     return fetch(CONFIG.api + path, init).then(function (res) {
       return res.text().then(function (text) {
         var body = null;
@@ -244,7 +248,7 @@
           var d = body && body.detail !== undefined ? body.detail : body;
           var msg = typeof d === 'string' ? d : Array.isArray(d) ? d.map(function (x) { return x.msg || x; }).join('; ') : 'Request failed (' + res.status + ')';
           var err = new Error(msg); err.status = res.status;
-          if (res.status === 401 && path.indexOf('/auth/') !== 0 && session) { signOut('Your session ended. Please sign in again.'); }
+          if (res.status === 401 && !VIEW_MODE && path.indexOf('/auth/') !== 0 && session) { signOut('Your session ended. Please sign in again.'); }
           throw err;
         }
         return body;
@@ -296,6 +300,20 @@
 
   // ---------------------------------------------------------------- session + layout
   var session = store('faceid-session');
+  // Sign-in can be switched off on the server (LOGIN_REQUIRED=0). Then the top dropdown
+  // just switches the view between Admin, Professor and a Student. Checked at start-up.
+  var VIEW_MODE = false;
+  var VIEWS = {
+    admin: { view: true, role: 'admin', name: 'Admin', username: 'admin', student_id: null },
+    lecturer: { view: true, role: 'lecturer', name: 'Professor', username: 'professor', student_id: null }
+  };
+  function setView(v, quiet) {
+    session = v;
+    store('faceid-session', v);
+    if (!quiet) toast('Now viewing as ' + v.name + (v.role === 'student' ? ' (student)' : ''));
+    var home = v.role === 'student' ? '#/me' : '#/dashboard';
+    if (location.hash === home) route(); else location.hash = home;
+  }
   function signOut(msg) {
     stopCamera();
     store('faceid-session', null);
@@ -330,7 +348,7 @@
   ];
 
   function layout(activeKey, inner) {
-    var items = NAV.filter(function (n) { return n.roles.indexOf(session.role) >= 0; }).map(function (n) {
+    var items = NAV.filter(function (n) { return n.roles.indexOf(session.role) >= 0 && !(VIEW_MODE && (n.key === 'users' || n.key === 'account')); }).map(function (n) {
       return '<a class="nav-item' + (n.key === activeKey ? ' active' : '') + '" href="' + n.href + '">' +
         '<span class="nav-tile">' + I[n.icon] + '</span>' + esc(n.label) + '</a>';
     }).join('');
@@ -343,7 +361,7 @@
       '<div class="user-name">' + esc(session.name) + '</div><div class="user-role">' + esc((ROLES[session.role] || { badge: session.role }).badge) + '</div></span>' +
       '<svg class="chev" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></button>' +
       '<div class="umenu hidden" id="umenu" role="menu"></div></div>' +
-      '<button class="icon-btn" id="logout" title="Sign out" aria-label="Sign out">' + I.logout + '</button><span id="logout2" class="hidden"></span></header>' +
+      '<button class="icon-btn' + (VIEW_MODE ? ' hidden' : '') + '" id="logout" title="Sign out" aria-label="Sign out">' + I.logout + '</button><span id="logout2" class="hidden"></span></header>' +
       '<main class="main">' + inner + '</main>';
   }
   function pageHead(title, sub, backHref, actions) {
@@ -388,6 +406,7 @@
     var m = $('#umenu');
     if (!m.classList.contains('hidden')) { closeUserMenu(); return; }
     m.classList.remove('hidden'); $('#umenu-btn').setAttribute('aria-expanded', 'true');
+    if (VIEW_MODE) { drawViewMenu(m); return; }
     var admin = session.role === 'admin';
     var me = { name: session.name, username: session.username, role: session.role, student_id: session.student_id, active: true };
     function item(u) {
@@ -435,6 +454,34 @@
       }).catch(function () { draw([me]); });
     }
   }
+  // No-login mode: switch between Admin, Professor and any student instantly
+  function drawViewMenu(m) {
+    function item(v, sub) {
+      var cur = session.role === v.role && (v.role !== 'student' || session.student_id === v.student_id);
+      return '<button type="button" class="umenu-item' + (cur ? ' current' : '') + '" data-view="' + esc(JSON.stringify(v)) + '">' +
+        '<span class="um-text"><span class="um-name">' + esc(v.name) + (cur ? ' <span class="um-tick">&#10003;</span>' : '') + '</span><span class="um-user mono">' + esc(sub) + '</span></span>' + roleBadge(v.role) + '</button>';
+    }
+    function group(r, n, body) {
+      return '<div class="umenu-group"><span class="ug-dot role-' + r + '"></span>' + esc(ROLES[r].group) + '<span class="ug-count">' + n + '</span></div>' + body;
+    }
+    function draw(students, loading) {
+      var stu = students.map(function (st) {
+        return item({ view: true, role: 'student', name: st.name, username: st.student_id.toLowerCase(), student_id: st.student_id }, st.student_id + ' · ' + classShort(st.class_name));
+      }).join('');
+      m.innerHTML = '<div class="umenu-head"><span><b>&#10022;</b> Switch view</span><span class="mono">sign-in off</span></div><div class="umenu-list">' +
+        group('admin', 1, item(VIEWS.admin, 'Everything')) +
+        group('lecturer', 1, item(VIEWS.lecturer, 'Take attendance, records')) +
+        group('student', loading ? '…' : students.length, stu || '<div class="umenu-empty">' + (loading ? 'Loading…' : 'No students yet') + '</div>') +
+        '</div>';
+      $all('[data-view]', m).forEach(function (b) {
+        b.onclick = function () { closeUserMenu(); setView(JSON.parse(b.getAttribute('data-view'))); };
+      });
+    }
+    draw([], true);
+    api('/auth/view-people').then(function (d) { if (!m.classList.contains('hidden')) draw(d.students); })
+      .catch(function () { if (!m.classList.contains('hidden')) draw([]); });
+  }
+
   document.addEventListener('click', function (e) {
     var w = e.target.closest ? e.target.closest('.umenu-wrap') : null;
     if (!w) closeUserMenu();
@@ -504,7 +551,7 @@
       { icon: 'audit', name: 'Audit Log', desc: 'Every correction', href: '#/audit', admin: true },
       { icon: 'usersAdmin', name: 'Users', desc: 'Admin, lecturer & student logins', href: '#/users', admin: true },
       { icon: 'account', name: 'My Account', desc: 'Profile & password', href: '#/account' }
-    ].filter(function (m) { return isAdmin || !m.admin; });
+    ].filter(function (m) { return (isAdmin || !m.admin) && !(VIEW_MODE && (m.href === '#/users' || m.href === '#/account')); });
     var first = session.name.split(' ')[0];
     mount('dashboard',
       '<section class="banner"><div class="banner-text"><div class="banner-meta"><span class="chip chip-role">' + esc(session.role.toUpperCase()) + '</span>• ' + esc(CONFIG.college) + '</div>' +
@@ -517,6 +564,7 @@
         return '<a class="module" href="' + m.href + '">' + I[m.icon] + '<div class="module-name">' + esc(m.name) + '</div><div class="module-desc">' + esc(m.desc) + '</div></a>';
       }).join('') + '</div>');
 
+    var statsBox = $('#stats');
     api('/admin/stats').then(function (s) {
       var pct = s.today_marked ? Math.round(100 * s.today_present / s.today_marked) + '%' : '—';
       var cards = [
@@ -525,11 +573,11 @@
         ['camera', '#e8f7ef', s.enrolled_students + ' / ' + s.students, 'Faces enrolled'],
         ['take', '#fdecec', pct, 'Present today']
       ];
-      $('#stats').innerHTML = cards.map(function (c) {
+      statsBox.innerHTML = cards.map(function (c) {
         return '<div class="stat"><div class="stat-icon" style="background:' + c[1] + '">' + I[c[0]] + '</div><div><div class="stat-value">' + esc(c[2]) + '</div><div class="stat-label">' + c[3] + '</div></div></div>';
       }).join('');
     }).catch(function (e) {
-      $('#stats').innerHTML = '<div class="alert alert-err" style="grid-column:1/-1">' + esc(e.message) + '</div>';
+      statsBox.innerHTML = '<div class="alert alert-err" style="grid-column:1/-1">' + esc(e.message) + '</div>';
     });
   }
 
@@ -717,12 +765,14 @@
       '<button class="btn btn-primary btn-block" id="save" style="margin-top:16px" disabled>' + I.check + (isNew ? 'Save student & enroll face' : 'Enroll photos') + '</button></div></div>');
 
     if (!isNew) {
+      var sidBox = $('#sid');
       api('/admin/students').then(function (d) {
+        if (!document.body.contains(sidBox)) return;
         var st = d.students.filter(function (s) { return s.student_id === existingId; })[0];
         if (!st) { $('#msg').innerHTML = '<div class="alert alert-err">Student not found.</div>'; return; }
         $('#sid').value = st.student_id; $('#sname').value = st.name; $('#scls').value = classLabel(st.class_name); savedClass = st.class_name;
         $('#who').textContent = st.name + ' (' + st.student_id + ') · ' + st.face_count + ' photo(s) enrolled';
-      }).catch(function (e) { toast(e.message, true); });
+      }).catch(function (e) { if (document.body.contains(sidBox)) toast(e.message, true); });
     } else {
       var finishPicker = function (names) {
         var q = query();
@@ -1268,7 +1318,9 @@
       '<div class="stats" id="stats">' + loadingHtml('Loading your attendance…') + '</div>' +
       '<div class="section-title"><h2>Attendance history</h2><span class="count-pill" id="me-count">—</span></div>' +
       '<div id="list"></div>');
+    var box = $('#list');
     api('/me/attendance').then(function (d) {
+      if (!document.body.contains(box)) return;
       $('#me-class').textContent = classLabel(d.student.class_name);
       var pct = d.total ? Math.round(100 * d.present / d.total) + '%' : '—';
       var cards = [
@@ -1289,6 +1341,7 @@
           }).join('') + '</tbody></table></div>'
         : '<div class="panel">' + emptyHtml('No attendance has been taken for you yet.', 'records') + '</div>';
     }).catch(function (e) {
+      if (!document.body.contains(box)) return;
       $('#stats').innerHTML = '';
       $('#list').innerHTML = '<div class="alert alert-err">' + esc(e.message) + '</div>';
     });
@@ -1326,11 +1379,12 @@
 
   // ---------------------------------------------------------------- router
   function route() {
-    if (session && !session.token) { store('faceid-session', null); session = null; }
+    if (VIEW_MODE && (!session || !session.view)) { session = VIEWS.admin; store('faceid-session', session); }
+    if (!VIEW_MODE && session && !session.token) { store('faceid-session', null); session = null; }
     var path = (location.hash.replace(/^#/, '').split('?')[0]) || '/';
     $('#modal-root').innerHTML = '';
     if (!session) { if (path !== '/login') { location.hash = '#/login'; return; } return pageLogin(); }
-    if (path === '/login' || path === '/') { location.hash = session.role === 'student' ? '#/me' : '#/dashboard'; return; }
+    if (path === '/login' || path === '/' || (VIEW_MODE && (path.indexOf('/account') === 0 || path.indexOf('/users') === 0))) { location.hash = session.role === 'student' ? '#/me' : '#/dashboard'; return; }
     if (path === '/account') return pageAccount();
     if (path === '/account/password') return pagePassword();
     if (session.role === 'student') {
@@ -1361,5 +1415,8 @@
   }
   window.addEventListener('hashchange', route);
   window.addEventListener('beforeunload', stopCamera);
-  route();
+  fetch(CONFIG.api + '/auth/status').then(function (r) { return r.json(); })
+    .then(function (st) { VIEW_MODE = st && st.login_required === false; })
+    .catch(function () {})
+    .then(route);
 })();
