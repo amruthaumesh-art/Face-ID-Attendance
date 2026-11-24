@@ -403,7 +403,7 @@
         var head = '<div class="umenu-group"><span class="ug-dot role-' + r + '"></span>' + esc(ROLES[r].group) + '<span class="ug-count">' + (loading && r !== session.role ? '…' : g.length) + '</span></div>';
         var body = g.length ? g.map(item).join('')
           : '<div class="umenu-empty">' + (loading ? 'Loading…' : 'No ' + esc(ROLES[r].group.toLowerCase()) + ' accounts yet') +
-            (admin && !loading ? '<a href="#/users/new?role=' + r + '">+ Add</a>' : '') + '</div>';
+            (admin && !loading ? '<a href="#/users/' + r + '/new">+ Add</a>' : '') + '</div>';
         return head + body;
       }).join('');
       m.innerHTML = '<div class="umenu-head"><span><b>&#10022;</b> ' + (admin ? 'Switch account' : 'Signed in as') + '</span>' +
@@ -1146,31 +1146,48 @@
     $('#stu').onchange = load;
   }
 
-  // Users, page 1: accounts grouped by role
-  function pageUsers() {
-    mount('users', pageHead('Users', 'Admin, professor / lecturer and student accounts', '#/dashboard',
-      '<a class="btn btn-primary" href="#/users/new">' + I.plus + 'Add account</a>') +
+  // Users: section cards -> one role's accounts -> that role's own add page
+  var ROLE_PAGE = {
+    admin: { badge: 'A', gold: false, title: 'Admins', add: 'Add Admin', desc: 'Everything: students, faces, accounts, records' },
+    lecturer: { badge: 'P', gold: true, title: 'Professors / Lecturers', add: 'Add Professor', desc: 'Take attendance and view records' },
+    student: { badge: 'S', gold: false, title: 'Students', add: 'Add Student Login', desc: 'See only their own attendance' }
+  };
+  function pageUsers(role) {
+    if (!role) {
+      mount('users', pageHead('Users', 'Choose who you want to see or add', '#/dashboard') + '<div id="list">' + loadingHtml() + '</div>');
+      var box0 = $('#list');
+      api('/admin/users').then(function (d) {
+        box0.innerHTML = cardGrid(ROLE_ORDER.map(function (r) {
+          var n = d.users.filter(function (u) { return u.role === r; }).length;
+          return { href: '#/users/' + r, badge: ROLE_PAGE[r].badge, gold: ROLE_PAGE[r].gold, title: ROLES[r].group, lines: [ROLE_PAGE[r].desc, plural(n, 'account')] };
+        }));
+      }).catch(function (e) { box0.innerHTML = '<div class="alert alert-err">' + esc(e.message) + '</div>'; });
+      return;
+    }
+    var rp = ROLE_PAGE[role];
+    mount('users', pageHead(rp.title, '<span id="u-sub">Loading…</span>', '#/users',
+      '<a class="btn btn-primary" href="#/users/' + role + '/new">' + I.plus + esc(rp.add) + '</a>') +
       '<div id="list">' + loadingHtml() + '</div>');
 
     function row(u) {
       var me = u.username === session.username;
       return '<tr><td><div class="who"><span class="avatar">' + esc(initials(u.name)) + '</span><div><div style="font-weight:600">' + esc(u.name) + (me ? ' <span class="pill pill-grey">You</span>' : '') + '</div>' +
-        '<div class="mono">' + esc(u.username) + (u.student_id ? ' · ' + esc(u.student_id) : '') + '</div></div></div></td>' +
-        '<td class="hide-sm">' + roleBadge(u.role) + '</td>' +
+        '<div class="mono">' + esc(u.username) + '</div></div></div></td>' +
+        (role === 'student' ? '<td class="mono hide-sm">' + esc(u.student_id || '') + '</td>' : '') +
         '<td>' + (u.active ? '<span class="pill pill-green">Active</span>' : '<span class="pill pill-grey">Deactivated</span>') + '</td>' +
         '<td><div class="actions"><button class="btn btn-ghost btn-sm" data-reset="' + u.id + '" data-name="' + esc(u.name) + '">Reset password</button>' +
         (me ? '' : '<button class="btn ' + (u.active ? 'btn-danger' : 'btn-ghost') + ' btn-sm" data-active="' + u.id + '" data-to="' + (!u.active) + '" data-name="' + esc(u.name) + '">' + (u.active ? 'Deactivate' : 'Activate') + '</button>') +
         '</div></td></tr>';
     }
+    var box = $('#list'), sub = $('#u-sub');
     function load() {
       api('/admin/users').then(function (d) {
-        $('#list').innerHTML = ROLE_ORDER.map(function (r) {
-          var g = d.users.filter(function (u) { return u.role === r; });
-          return '<div class="section-title"><h2>' + esc(ROLES[r].group) + '</h2><span class="count-pill">' + plural(g.length, 'account') + '</span>' +
-            '<a class="btn btn-ghost btn-sm" style="margin-left:auto" href="#/users/new?role=' + r + '">' + I.plus + 'Add<span class="hide-sm"> ' + esc(ROLES[r].one.toLowerCase()) + '</span></a></div>' +
-            (g.length ? '<div class="table-wrap" style="margin-bottom:26px"><table><thead><tr><th>Account</th><th class="hide-sm">Role</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead><tbody>' + g.map(row).join('') + '</tbody></table></div>'
-              : '<div class="panel" style="margin-bottom:26px">' + emptyHtml('No ' + esc(ROLES[r].group.toLowerCase()) + ' accounts yet.', 'usersAdmin') + '</div>');
-        }).join('');
+        if (!document.body.contains(box)) return;
+        var g = d.users.filter(function (u) { return u.role === role; });
+        sub.textContent = plural(g.length, 'account') + ' · ' + rp.desc;
+        $('#list').innerHTML = g.length
+          ? '<div class="table-wrap"><table><thead><tr><th>Account</th>' + (role === 'student' ? '<th class="hide-sm">Student ID</th>' : '') + '<th>Status</th><th style="text-align:right">Actions</th></tr></thead><tbody>' + g.map(row).join('') + '</tbody></table></div>'
+          : '<div class="panel">' + emptyHtml('No ' + esc(ROLES[role].group.toLowerCase()) + ' accounts yet. Click ' + esc(rp.add) + ' to create one.', 'usersAdmin') + '</div>';
         $all('[data-reset]').forEach(function (b) {
           b.onclick = function () {
             modal({ title: 'Reset password for ' + b.getAttribute('data-name'), text: 'Tell them the new password; they can change it later.', input: 'New password (at least 8 characters)', ok: 'Reset password' }).then(function (pw) {
@@ -1190,58 +1207,52 @@
             });
           };
         });
-      }).catch(function (e) { $('#list').innerHTML = '<div class="alert alert-err">' + esc(e.message) + '</div>'; });
+      }).catch(function (e) { box.innerHTML = '<div class="alert alert-err">' + esc(e.message) + '</div>'; });
     }
     load();
   }
 
-  // Users, page 2: add an account
-  function pageUserNew() {
-    var q = query();
-    var role0 = ROLES[q.role] ? q.role : 'lecturer';
-    mount('users', pageHead('Add Account', 'Create a sign-in for an admin, professor / lecturer or student', '#/users') +
-      '<div class="panel narrow"><h3>Who is this account for?</h3>' +
-      '<div class="role-cards">' + ROLE_ORDER.map(function (r) {
-        var d = { admin: 'Everything: students, faces, accounts, records', lecturer: 'Takes attendance and views records', student: 'Sees only their own attendance' }[r];
-        return '<label class="role-card"><input type="radio" name="nu-role" value="' + r + '"' + (r === role0 ? ' checked' : '') + ' />' +
-          '<span class="rc-top">' + roleBadge(r) + '</span><span class="rc-name">' + esc(ROLES[r].one) + '</span><span class="rc-desc">' + d + '</span></label>';
-      }).join('') + '</div>' +
+  // Add page for one role (Add Admin / Add Professor / Add Student Login)
+  function pageUserNew(role) {
+    var rp = ROLE_PAGE[role], isStu = role === 'student';
+    mount('users', pageHead(rp.add, isStu ? 'Give a registered student their own login' : 'Create a sign-in for a ' + ROLES[role].one.toLowerCase(), '#/users/' + role) +
+      '<div class="panel narrow"><div class="role-head">' + roleBadge(role) + '<span>' + esc(rp.desc) + '</span></div>' +
       '<form id="new-user" autocomplete="off">' +
-      '<div class="field hidden" id="nu-sid-wrap"><label for="nu-sid">Which student?</label><select id="nu-sid" class="select"><option value="">Loading students…</option></select>' +
-        '<div class="hint" style="margin-top:6px">Add the student first (Add Student). One login per student.</div></div>' +
+      (isStu ? '<div class="field"><label for="nu-sid">Which student?</label><select id="nu-sid" class="select"><option value="">Loading students…</option></select>' +
+        '<div class="hint" style="margin-top:6px">The student must be added first (Add Student). One login per student.</div></div>' : '') +
       '<div class="row"><div class="field"><label for="nu-name">Full name</label><input id="nu-name" class="input" required /></div>' +
-      '<div class="field"><label for="nu-user">Username</label><input id="nu-user" class="input" placeholder="e.g. ravi.k" autocapitalize="none" required /></div></div>' +
+      '<div class="field"><label for="nu-user">Username</label><input id="nu-user" class="input" placeholder="' + (isStu ? 'e.g. 26pu1001' : role === 'admin' ? 'e.g. principal' : 'e.g. ravi.k') + '" autocapitalize="none" required /></div></div>' +
       '<div class="field"><label for="nu-pass">First password</label><input id="nu-pass" class="input" placeholder="At least 8 characters" required /></div>' +
       '<div class="hint">Give the person their username and this first password. They can change it under My Account.</div>' +
-      '<div class="row" style="justify-content:flex-end"><a class="btn btn-ghost" href="#/users">Cancel</a>' +
-      '<button class="btn btn-primary" type="submit">' + I.plus + 'Create account</button></div></form></div>');
+      '<div class="row" style="justify-content:flex-end"><a class="btn btn-ghost" href="#/users/' + role + '">Cancel</a>' +
+      '<button class="btn btn-primary" type="submit">' + I.plus + 'Create ' + esc(ROLES[role].one.toLowerCase()) + ' account</button></div></form></div>');
 
-    function role() { var c = document.querySelector('input[name="nu-role"]:checked'); return c ? c.value : 'lecturer'; }
-    function showSid() { $('#nu-sid-wrap').classList.toggle('hidden', role() !== 'student'); }
-    $all('input[name="nu-role"]').forEach(function (r) { r.onchange = showSid; });
-    var byId = {};
-    $('#nu-sid').onchange = function () {
-      var st = byId[$('#nu-sid').value];
-      if (!st) return;
-      $('#nu-name').value = st.name;
-      if (!$('#nu-user').value.trim()) $('#nu-user').value = st.student_id.toLowerCase().replace(/[^a-z0-9._-]/g, '');
-    };
-    api('/admin/students').then(function (d) {
-      d.students.forEach(function (st) { byId[st.student_id] = st; });
-      $('#nu-sid').innerHTML = d.students.length
-        ? '<option value="">Choose a student…</option>' + d.students.map(function (st) {
-            return '<option value="' + esc(st.student_id) + '">' + esc(st.name) + ' · ' + esc(st.student_id) + ' · ' + esc(classShort(st.class_name)) + '</option>';
-          }).join('')
-        : '<option value="">No students yet — add one first</option>';
-    }).catch(function () { $('#nu-sid').innerHTML = '<option value="">Could not load students</option>'; });
-    showSid();
+    if (isStu) {
+      var byId = {}, sel = $('#nu-sid');
+      $('#nu-sid').onchange = function () {
+        var st = byId[$('#nu-sid').value];
+        if (!st) return;
+        $('#nu-name').value = st.name;
+        $('#nu-user').value = st.student_id.toLowerCase().replace(/[^a-z0-9._-]/g, '');
+      };
+      Promise.all([api('/admin/students'), api('/admin/users')]).then(function (r) {
+        var taken = {};
+        r[1].users.forEach(function (u) { if (u.student_id) taken[u.student_id] = true; });
+        var free = r[0].students.filter(function (st) { return !taken[st.student_id]; });
+        free.forEach(function (st) { byId[st.student_id] = st; });
+        sel.innerHTML = free.length
+          ? '<option value="">Choose a student…</option>' + free.map(function (st) {
+              return '<option value="' + esc(st.student_id) + '">' + esc(st.name) + ' · ' + esc(st.student_id) + ' · ' + esc(classShort(st.class_name)) + '</option>';
+            }).join('')
+          : '<option value="">' + (r[0].students.length ? 'Every student already has a login' : 'No students yet — add one first') + '</option>';
+      }).catch(function () { sel.innerHTML = '<option value="">Could not load students</option>'; });
+    }
 
     $('#new-user').onsubmit = function (e) {
       e.preventDefault();
-      var r = role();
-      if (r === 'student' && !$('#nu-sid').value) { toast('Choose which student this login is for', true); return; }
-      api('/admin/users', { method: 'POST', json: { name: $('#nu-name').value.trim(), username: $('#nu-user').value.trim(), role: r, password: $('#nu-pass').value, student_id: r === 'student' ? $('#nu-sid').value : null } })
-        .then(function (res) { toast(res.message); location.hash = '#/users'; })
+      if (isStu && !$('#nu-sid').value) { toast('Choose which student this login is for', true); return; }
+      api('/admin/users', { method: 'POST', json: { name: $('#nu-name').value.trim(), username: $('#nu-user').value.trim(), role: role, password: $('#nu-pass').value, student_id: isStu ? $('#nu-sid').value : null } })
+        .then(function (res) { toast(res.message); location.hash = '#/users/' + role; })
         .catch(function (err) { toast(err.message, true); });
     };
   }
@@ -1343,7 +1354,9 @@
     if (admin && (m = path.match(/^\/students\/(.+)\/face$/))) return pageEnroll(decodeURIComponent(m[1]));
     if (admin && path === '/audit') return pageAudit();
     if (admin && path === '/users') return pageUsers();
-    if (admin && path === '/users/new') return pageUserNew();
+    if (admin && (m = path.match(/^\/users\/(admin|lecturer|student)$/))) return pageUsers(m[1]);
+    if (admin && (m = path.match(/^\/users\/(admin|lecturer|student)\/new$/))) return pageUserNew(m[1]);
+    if (admin && path === '/users/new') { var r0 = query().role; location.hash = '#/users/' + (ROLES[r0] ? r0 : 'lecturer') + '/new'; return; }
     location.hash = '#/dashboard';
   }
   window.addEventListener('hashchange', route);

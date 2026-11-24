@@ -477,3 +477,4 @@ button.user-chip:hover { background: rgba(255,255,255,.14); }
   .section-title h2 { font-size: 19px; }
 }
 @media (max-width: 860px) { .take-grid > .panel:first-child { order: 2; } }
+.role-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; color: var(--muted); font-size: 14px; }
