@@ -9,10 +9,12 @@ Accounts and login for the FACE ID backend.
   GET   /admin/users            list accounts                    (admin)
   POST  /admin/users            create an account                (admin)
   PATCH /admin/users/{id}       rename, change role, reset password, (de)activate (admin)
+  GET   /me/attendance          a student's own attendance       (student)
 
 Every other API request needs  Authorization: Bearer <token>.
 Admin-only: student registration and face enrollment, removing students,
 account management, audit history, lecturer routes.
+Student accounts are linked to one student_id and can only read their own attendance.
 """
 import os
 import secrets as pysecrets
@@ -33,17 +35,34 @@ CREATE TABLE IF NOT EXISTS users (
     id            SERIAL PRIMARY KEY,
     username      TEXT UNIQUE NOT NULL,
     name          TEXT NOT NULL,
-    role          TEXT NOT NULL CHECK (role IN ('admin', 'lecturer')),
+    role          TEXT NOT NULL CHECK (role IN ('admin', 'lecturer', 'student')),
     password_hash TEXT NOT NULL,
     active        BOOLEAN NOT NULL DEFAULT TRUE,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    last_login    TIMESTAMPTZ
+    last_login    TIMESTAMPTZ,
+    student_id    TEXT
 );
 CREATE TABLE IF NOT EXISTS app_settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
 """
+
+# Older databases: add the student_id column and allow the 'student' role.
+MIGRATE_SQL = """
+ALTER TABLE users ADD COLUMN IF NOT EXISTS student_id TEXT;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'users_role_check' AND pg_get_constraintdef(oid) LIKE '%student%'
+    ) THEN
+        ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+        ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'lecturer', 'student'));
+    END IF;
+END $$;
+"""
+ROLES = ("admin", "lecturer", "student")
 
 _secret_cache = None
 
@@ -52,6 +71,7 @@ def init_auth_tables():
     with db_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(SCHEMA_SQL)
+            cur.execute(MIGRATE_SQL)
 
 
 def token_secret() -> str:
@@ -80,6 +100,7 @@ def _public_user(row) -> dict:
         "username": row["username"],
         "name": row["name"],
         "role": row["role"],
+        "student_id": row.get("student_id"),
         "active": row["active"],
         "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
         "last_login": row["last_login"].isoformat() if row.get("last_login") else None,
@@ -138,6 +159,7 @@ class NewUser(BaseModel):
     username: str
     role: str = "lecturer"
     password: str
+    student_id: str | None = None
 
 
 class UserUpdate(BaseModel):
@@ -145,6 +167,21 @@ class UserUpdate(BaseModel):
     role: str | None = None
     active: bool | None = None
     password: str | None = None
+    student_id: str | None = None
+
+
+def _check_student_link(cur, student_id: str | None, skip_user_id: int | None = None) -> str:
+    sid = (student_id or "").strip().upper()
+    if not sid:
+        raise HTTPException(status_code=400, detail="Choose the student this login belongs to")
+    cur.execute("SELECT 1 FROM students WHERE student_id = %s", (sid,))
+    if cur.fetchone() is None:
+        raise HTTPException(status_code=404, detail=f"No student with ID {sid}. Add the student first.")
+    cur.execute("SELECT username FROM users WHERE student_id = %s AND id IS DISTINCT FROM %s", (sid, skip_user_id))
+    other = cur.fetchone()
+    if other:
+        raise HTTPException(status_code=409, detail=f"Student {sid} already has a login ({other['username']})")
+    return sid
 
 
 # ---------------------------------------------------------------- routes
@@ -228,8 +265,8 @@ def create_user(data: NewUser):
         security.check_password(data.password)
     except ValueError as e:
         _bad(e)
-    if data.role not in ("admin", "lecturer"):
-        raise HTTPException(status_code=400, detail="Role must be admin or lecturer")
+    if data.role not in ROLES:
+        raise HTTPException(status_code=400, detail="Role must be admin, lecturer or student")
     if not data.name.strip():
         raise HTTPException(status_code=400, detail="Name is required")
     with db_conn() as conn:
@@ -237,9 +274,10 @@ def create_user(data: NewUser):
         cur.execute("SELECT 1 FROM users WHERE username = %s", (username,))
         if cur.fetchone():
             raise HTTPException(status_code=409, detail="Username already exists")
+        sid = _check_student_link(cur, data.student_id) if data.role == "student" else None
         cur.execute(
-            "INSERT INTO users (username, name, role, password_hash) VALUES (%s, %s, %s, %s) RETURNING *",
-            (username, data.name.strip(), data.role, security.hash_password(data.password)),
+            "INSERT INTO users (username, name, role, password_hash, student_id) VALUES (%s, %s, %s, %s, %s) RETURNING *",
+            (username, data.name.strip(), data.role, security.hash_password(data.password), sid),
         )
         row = cur.fetchone()
     return {"message": f"Account created for {row['name']}", "user": _public_user(row)}
@@ -257,9 +295,14 @@ def update_user(user_id: int, data: UserUpdate, request: Request):
         is_me = row["username"] == me["username"]
         if is_me and (data.active is False or (data.role and data.role != "admin")):
             raise HTTPException(status_code=400, detail="You cannot deactivate or demote your own account")
-        if data.role is not None and data.role not in ("admin", "lecturer"):
-            raise HTTPException(status_code=400, detail="Role must be admin or lecturer")
+        if data.role is not None and data.role not in ROLES:
+            raise HTTPException(status_code=400, detail="Role must be admin, lecturer or student")
         sets, vals = [], []
+        new_role = data.role or row["role"]
+        if new_role == "student" and (data.student_id is not None or not row.get("student_id")):
+            sets.append("student_id = %s"); vals.append(_check_student_link(cur, data.student_id or row.get("student_id"), row["id"]))
+        elif new_role != "student" and row.get("student_id"):
+            sets.append("student_id = NULL")
         if data.name is not None and data.name.strip():
             sets.append("name = %s"); vals.append(data.name.strip())
         if data.role is not None:
@@ -280,6 +323,40 @@ def update_user(user_id: int, data: UserUpdate, request: Request):
         if cur.fetchone()["n"] == 0:
             raise HTTPException(status_code=400, detail="At least one active admin account is required")
     return {"message": "Account updated", "user": _public_user(row)}
+
+
+@router.get("/me/attendance")
+def my_attendance(request: Request):
+    me = request.state.user
+    if me["role"] != "student" or not me.get("student_id"):
+        raise HTTPException(status_code=403, detail="Only student accounts have this page")
+    with db_conn() as conn:
+        cur = dict_cursor(conn)
+        cur.execute("SELECT student_id, name, class_name FROM students WHERE student_id = %s", (me["student_id"],))
+        student = cur.fetchone()
+        if student is None:
+            raise HTTPException(status_code=404, detail="Your student record was removed. Contact the admin.")
+        cur.execute(
+            "SELECT class_name, attendance_date, status, marked_at FROM attendance "
+            "WHERE student_id = %s ORDER BY attendance_date DESC, class_name",
+            (me["student_id"],),
+        )
+        rows = cur.fetchall()
+    present = sum(1 for r in rows if r["status"] == "Present")
+    return {
+        "student": dict(student),
+        "present": present,
+        "total": len(rows),
+        "records": [
+            {
+                "class_name": r["class_name"],
+                "date": r["attendance_date"].isoformat(),
+                "status": r["status"],
+                "marked_at": r["marked_at"].isoformat() if r["marked_at"] else None,
+            }
+            for r in rows
+        ],
+    }
 
 
 # ---------------------------------------------------------------- request guard
@@ -321,6 +398,8 @@ def install(app):
         user = await run_in_threadpool(user_from_token, token) if token else None
         if user is None:
             return JSONResponse({"detail": "Please sign in again"}, status_code=401)
+        if user["role"] == "student" and not path.startswith(("/auth/", "/me/")):
+            return JSONResponse({"detail": "Student accounts can only see their own attendance"}, status_code=403)
         if _needs_admin(path, request.method) and user["role"] != "admin":
             return JSONResponse({"detail": "Only an admin can do this"}, status_code=403)
         request.state.user = user

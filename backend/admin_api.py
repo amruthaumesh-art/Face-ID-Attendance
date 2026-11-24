@@ -98,6 +98,7 @@ def admin_delete_student(student_id: str):
         cur.execute("DELETE FROM attendance WHERE student_id = %s", (student_id,))
         records = cur.rowcount
         cur.execute("DELETE FROM students WHERE student_id = %s", (student_id,))
+        cur.execute("DELETE FROM users WHERE role = 'student' AND student_id = %s", (student_id,))
     return {
         "message": f"Removed {row[0]} ({student_id})",
         "faces_removed": faces,

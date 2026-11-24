@@ -304,10 +304,17 @@
     if (location.hash !== '#/login') location.hash = '#/login'; else route();
   }
   function startSession(res) {
-    session = { token: res.token, role: res.user.role, name: res.user.name, username: res.user.username };
+    session = { token: res.token, role: res.user.role, name: res.user.name, username: res.user.username, student_id: res.user.student_id || null };
     store('faceid-session', session);
-    location.hash = '#/dashboard';
+    location.hash = session.role === 'student' ? '#/me' : '#/dashboard';
   }
+
+  var ROLES = {
+    admin: { badge: 'ADMIN', group: 'Admin', one: 'Admin' },
+    lecturer: { badge: 'LECTURER', group: 'Professor / Lecturer', one: 'Professor / Lecturer' },
+    student: { badge: 'STUDENT', group: 'Student', one: 'Student' }
+  };
+  var ROLE_ORDER = ['admin', 'lecturer', 'student'];
 
   var NAV = [
     { key: 'dashboard', label: 'Dashboard', icon: 'dashboard', href: '#/dashboard', roles: ['admin', 'lecturer'] },
@@ -318,7 +325,8 @@
     { key: 'records', label: 'Records', icon: 'records', href: '#/attendance/records', roles: ['admin', 'lecturer'] },
     { key: 'audit', label: 'Audit Log', icon: 'audit', href: '#/audit', roles: ['admin'] },
     { key: 'users', label: 'Users', icon: 'usersAdmin', href: '#/users', roles: ['admin'] },
-    { key: 'account', label: 'My Account', icon: 'account', href: '#/account', roles: ['admin', 'lecturer'] }
+    { key: 'myatt', label: 'My Attendance', icon: 'records', href: '#/me', roles: ['student'] },
+    { key: 'account', label: 'My Account', icon: 'account', href: '#/account', roles: ['admin', 'lecturer', 'student'] }
   ];
 
   function layout(activeKey, inner) {
@@ -332,7 +340,7 @@
       '<span class="chip chip-gold">Smart Attendance</span></div><div class="brand-sub">' + esc(CONFIG.college) + '</div></div>' +
       '<div class="header-spacer"></div>' +
       '<div class="umenu-wrap"><button type="button" class="user-chip" id="umenu-btn" aria-haspopup="true" aria-expanded="false"><span class="avatar">' + esc(initials(session.name)) + '</span><span class="user-text">' +
-      '<div class="user-name">' + esc(session.name) + '</div><div class="user-role">' + esc(session.role.toUpperCase()) + '</div></span>' +
+      '<div class="user-name">' + esc(session.name) + '</div><div class="user-role">' + esc((ROLES[session.role] || { badge: session.role }).badge) + '</div></span>' +
       '<svg class="chev" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></button>' +
       '<div class="umenu hidden" id="umenu" role="menu"></div></div>' +
       '<button class="icon-btn" id="logout" title="Sign out" aria-label="Sign out">' + I.logout + '</button><span id="logout2" class="hidden"></span></header>' +
@@ -371,7 +379,7 @@
 
 
   // ---------------------------------------------------------------- account menu (top right)
-  function roleBadge(role) { return '<span class="role-badge role-' + esc(role) + '">' + esc(String(role).toUpperCase()) + '</span>'; }
+  function roleBadge(role) { return '<span class="role-badge role-' + esc(role) + '">' + esc((ROLES[role] || { badge: String(role).toUpperCase() }).badge) + '</span>'; }
   function closeUserMenu() {
     var m = $('#umenu'); if (!m) return;
     m.classList.add('hidden'); $('#umenu-btn').setAttribute('aria-expanded', 'false');
@@ -380,16 +388,28 @@
     var m = $('#umenu');
     if (!m.classList.contains('hidden')) { closeUserMenu(); return; }
     m.classList.remove('hidden'); $('#umenu-btn').setAttribute('aria-expanded', 'true');
-    var me = { name: session.name, username: session.username, role: session.role, active: true };
-    function draw(users) {
-      m.innerHTML = '<div class="umenu-head"><span><b>&#10022;</b> ' + (session.role === 'admin' ? 'Switch account' : 'Signed in as') + '</span>' +
-        '<span class="mono">' + plural(users.length, 'account') + '</span></div><div class="umenu-list">' +
-        users.map(function (u) {
-          var cur = u.username === session.username;
-          return '<button type="button" class="umenu-item' + (cur ? ' current' : '') + (u.active === false ? ' off' : '') + '" data-switch="' + esc(u.username) + '" data-name="' + esc(u.name) + '">' +
-            '<span class="um-text"><span class="um-name">' + esc(u.name) + (cur ? ' <span class="um-tick">&#10003;</span>' : '') + '</span><span class="um-user mono">' + esc(u.username) + (u.active === false ? ' · deactivated' : '') + '</span></span>' + roleBadge(u.role) + '</button>';
-        }).join('') + '</div><div class="umenu-foot"><a href="#/account" role="menuitem">' + I.account.replace('<svg', '<svg width="22" height="22"') + 'My Account</a>' +
-        (session.role === 'admin' ? '<a href="#/users" role="menuitem">' + I.usersAdmin.replace('<svg', '<svg width="22" height="22"') + 'Users &amp; roles</a>' : '') +
+    var admin = session.role === 'admin';
+    var me = { name: session.name, username: session.username, role: session.role, student_id: session.student_id, active: true };
+    function item(u) {
+      var cur = u.username === session.username;
+      return '<button type="button" class="umenu-item' + (cur ? ' current' : '') + (u.active === false ? ' off' : '') + '" data-switch="' + esc(u.username) + '" data-name="' + esc(u.name) + '">' +
+        '<span class="um-text"><span class="um-name">' + esc(u.name) + (cur ? ' <span class="um-tick">&#10003;</span>' : '') + '</span><span class="um-user mono">' + esc(u.username) +
+        (u.student_id ? ' · ' + esc(u.student_id) : '') + (u.active === false ? ' · deactivated' : '') + '</span></span>' + roleBadge(u.role) + '</button>';
+    }
+    function draw(users, loading) {
+      var groups = admin ? ROLE_ORDER : [session.role];
+      var list = groups.map(function (r) {
+        var g = users.filter(function (u) { return u.role === r; });
+        var head = '<div class="umenu-group"><span class="ug-dot role-' + r + '"></span>' + esc(ROLES[r].group) + '<span class="ug-count">' + (loading && r !== session.role ? '…' : g.length) + '</span></div>';
+        var body = g.length ? g.map(item).join('')
+          : '<div class="umenu-empty">' + (loading ? 'Loading…' : 'No ' + esc(ROLES[r].group.toLowerCase()) + ' accounts yet') +
+            (admin && !loading ? '<a href="#/users/new?role=' + r + '">+ Add</a>' : '') + '</div>';
+        return head + body;
+      }).join('');
+      m.innerHTML = '<div class="umenu-head"><span><b>&#10022;</b> ' + (admin ? 'Switch account' : 'Signed in as') + '</span>' +
+        '<span class="mono">' + (loading ? '…' : plural(users.length, 'account')) + '</span></div><div class="umenu-list">' + list + '</div>' +
+        '<div class="umenu-foot"><a href="#/account" role="menuitem">' + I.account.replace('<svg', '<svg width="22" height="22"') + 'My Account</a>' +
+        (admin ? '<a href="#/users" role="menuitem">' + I.usersAdmin.replace('<svg', '<svg width="22" height="22"') + 'Users &amp; roles</a>' : '') +
         '<button type="button" id="um-out" role="menuitem">' + I.logout.replace('<svg', '<svg width="18" height="18"') + 'Sign out</button></div>';
       $all('[data-switch]', m).forEach(function (b) {
         b.onclick = function () {
@@ -406,13 +426,13 @@
       $all('a', m).forEach(function (a) { a.onclick = closeUserMenu; });
       $('#um-out').onclick = function () { signOut(); };
     }
-    draw([me]);
-    if (session.role === 'admin') {
+    draw([me], admin);
+    if (admin) {
       api('/admin/users').then(function (d) {
         if (m.classList.contains('hidden')) return;
-        var list = d.users.slice().sort(function (a, b) { return (a.username === session.username ? -1 : 0) - (b.username === session.username ? -1 : 0) || a.role.localeCompare(b.role) || a.name.localeCompare(b.name); });
+        var list = d.users.slice().sort(function (a, b) { return (a.username === session.username ? -1 : 0) - (b.username === session.username ? -1 : 0) || a.name.localeCompare(b.name); });
         draw(list);
-      }).catch(function () {});
+      }).catch(function () { draw([me]); });
     }
   }
   document.addEventListener('click', function (e) {
@@ -482,7 +502,7 @@
       { icon: 'take', name: 'Take Attendance', desc: 'Camera or classroom photo', href: '#/attendance/take' },
       { icon: 'records', name: 'Records', desc: 'View & correct attendance', href: '#/attendance/records' },
       { icon: 'audit', name: 'Audit Log', desc: 'Every correction', href: '#/audit', admin: true },
-      { icon: 'usersAdmin', name: 'Users', desc: 'Lecturer & admin accounts', href: '#/users', admin: true },
+      { icon: 'usersAdmin', name: 'Users', desc: 'Admin, lecturer & student logins', href: '#/users', admin: true },
       { icon: 'account', name: 'My Account', desc: 'Profile & password', href: '#/account' }
     ].filter(function (m) { return isAdmin || !m.admin; });
     var first = session.name.split(' ')[0];
@@ -625,9 +645,18 @@
     }).catch(function (e) { $('#epick-wrap').innerHTML = '<div class="alert alert-err">' + esc(e.message) + '</div>'; });
   }
 
-  function stepsBar(n) {
-    return '<div class="steps"><div class="step' + (n === 1 ? ' active' : ' done') + '"><span>1</span>Student details</div>' +
-      '<div class="step-line"></div><div class="step' + (n === 2 ? ' active' : '') + '"><span>2</span>Capture face</div></div>';
+  function stepsBar(n, labels) {
+    labels = labels || ['Student details', 'Capture face'];
+    return '<div class="steps">' + labels.map(function (l, i) {
+      var k = i + 1;
+      return (i ? '<div class="step-line' + (k <= n ? ' on' : '') + '"></div>' : '') +
+        '<div class="step' + (k === n ? ' active' : (k < n ? ' done' : '')) + '"><span>' + (k < n ? '&#10003;' : k) + '</span><b class="sl">' + esc(l) + '</b></div>';
+    }).join('') + '</div>';
+  }
+  var TAKE_STEPS = ['Session', 'Classroom photo', 'Result'];
+  var REC_STEPS = ['Class & date', 'Records'];
+  function qs(o) {
+    return '?' + Object.keys(o).filter(function (k) { return o[k]; }).map(function (k) { return k + '=' + encodeURIComponent(o[k]); }).join('&');
   }
 
   // Add Student, page 1: details -> registers the student -> page 2 (capture face)
@@ -850,18 +879,48 @@
     }).catch(function (e) { $('#list').innerHTML = '<div class="alert alert-err">' + esc(e.message) + '</div>'; });
   }
 
+  // Take Attendance, page 1: session (class + date)
   function pageTake() {
     var q = query();
+    mount('take', pageHead('Take Attendance', 'Step 1 of 3 · Choose the session', '#/dashboard') + stepsBar(1, TAKE_STEPS) +
+      '<div class="panel narrow"><h3>Session</h3><div class="hint">Which class are you taking attendance for, and on which date?</div>' +
+      '<div id="tpick-wrap">' + loadingHtml() + '</div>' +
+      '<div class="field"><label for="date">Date</label><input id="date" type="date" class="input" value="' + esc(q.date || today()) + '" max="' + today() + '" /></div>' +
+      '<div class="alert alert-warn" style="font-weight:500">Attendance for a class and date can be changed for ' + CONFIG.editWindowMinutes + ' minutes after it is first saved. After that it is locked.</div>' +
+      '<div class="row" style="justify-content:flex-end"><a class="btn btn-ghost" href="#/dashboard">Cancel</a>' +
+      '<button class="btn btn-primary" id="next">Next: Classroom photo ' + L.arrow.replace('<svg', '<svg width="18" height="18"') + '</button></div></div>');
+    var tpick = null;
+    api('/admin/classes').then(function (d) {
+      $('#tpick-wrap').innerHTML = pickerHtml('tpick');
+      tpick = bindPicker('tpick', d.classes.map(function (c) { return c.class_name; }), { selected: q['class'] });
+    }).catch(function (e) { $('#tpick-wrap').innerHTML = '<div class="alert alert-err">' + esc(e.message) + '</div>'; });
+    $('#next').onclick = function () {
+      var cls = tpick ? tpick.value() : '', date = $('#date').value;
+      if (!cls) { toast('Choose year, stream and section', true); return; }
+      if (!date) { toast('Choose a date', true); return; }
+      location.hash = '#/attendance/take/photo' + qs({ 'class': cls, date: date });
+    };
+  }
+
+  function sessionStrip(cls, date, changeHref) {
+    return '<div class="session-strip"><span class="ss-icon">' + I.classes + '</span><div><div class="ss-title">' + esc(classLabel(cls)) + '</div>' +
+      '<div class="ss-sub">' + fmtDate(date) + '</div></div><a class="btn btn-ghost btn-sm" href="' + changeHref + '">Change</a></div>';
+  }
+
+  // Take Attendance, page 2: classroom photo (camera or upload) -> analyse
+  var lastTake = null;
+  function pageTakePhoto() {
+    var q = query(), cls = q['class'], date = q.date;
+    if (!cls || !date) { location.hash = '#/attendance/take'; return; }
+    var back = '#/attendance/take' + qs({ 'class': cls, date: date });
     var photos = []; // {blob, url, name}
     var mode = 'camera';
-    mount('take', pageHead('Take Attendance', 'Capture or upload the classroom photo. Students are recognised and attendance is saved.', '#/dashboard') +
-      '<div class="grid2"><div class="panel"><h3>1 · Session</h3><div class="hint">Choose the class and date.</div>' +
-      '<div id="tpick-wrap">' + loadingHtml() + '</div>' +
-      '<div class="field"><label for="date">Date</label><input id="date" type="date" class="input" value="' + (q.date || today()) + '" /></div>' +
-      '<div class="alert alert-warn" style="font-weight:500">Attendance for a class and date can be changed for ' + CONFIG.editWindowMinutes + ' minutes after it is first saved. After that it is locked.</div>' +
-      '<ul class="tips"><li>Whole class in one photo works for small rooms.</li><li>For big rooms take one photo per row and analyse them together.</li><li>Faces should be clear and not too small.</li></ul></div>' +
-      '<div class="panel"><h3>2 · Classroom photo</h3><div class="hint">One photo = whole class. Several photos = row by row.</div>' +
-      '<div class="tabs"><button class="tab active" data-mode="camera">' + 'Camera</button><button class="tab" data-mode="upload">Upload</button></div>' +
+    mount('take', pageHead('Classroom Photo', 'Step 2 of 3 · Capture or upload the classroom photo', back) + stepsBar(2, TAKE_STEPS) +
+      '<div class="grid2 take-grid"><div class="panel">' + sessionStrip(cls, date, back) +
+      '<h3 style="margin-top:18px">Tips for a good photo</h3>' +
+      '<ul class="tips"><li>Whole class in one photo works for small rooms.</li><li>For big rooms take one photo per row and analyse them together.</li><li>Faces should be clear, facing the camera, not too small.</li><li>Good light; avoid strong light behind the students.</li></ul></div>' +
+      '<div class="panel"><h3>Classroom photo</h3><div class="hint">One photo = whole class. Several photos = row by row.</div>' +
+      '<div class="tabs"><button class="tab active" data-mode="camera">Camera</button><button class="tab" data-mode="upload">Upload</button></div>' +
       '<div class="camera env" id="cam"><div class="camera-empty" id="cam-empty">' + I.cam.replace('<svg', '<svg width="56" height="56"') + '<div id="cam-text">Camera is off</div></div>' +
       '<video id="video" class="hidden" playsinline muted></video></div>' +
       '<div class="camera-bar" id="cam-bar"><button class="btn btn-ghost" id="start">' + I.cam + 'Start camera</button>' +
@@ -869,14 +928,8 @@
       '<button class="btn btn-gold" id="snap" disabled>' + I.cam + 'Capture</button></div>' +
       '<div class="camera-bar hidden" id="up-bar"><label class="btn btn-gold">' + I.upload + 'Choose photo(s)<input type="file" id="file" accept="image/jpeg,image/png" multiple class="hidden" /></label></div>' +
       '<div class="shots" id="shots"></div>' +
-      '<button class="btn btn-primary btn-block" id="go" style="margin-top:16px" disabled>' + I.check + 'Analyze & save attendance</button></div></div>' +
-      '<div id="result" style="margin-top:22px"></div>');
-
-    var tpick = null;
-    api('/admin/classes').then(function (d) {
-      $('#tpick-wrap').innerHTML = pickerHtml('tpick');
-      tpick = bindPicker('tpick', d.classes.map(function (c) { return c.class_name; }), { selected: q['class'] });
-    }).catch(function (e) { $('#tpick-wrap').innerHTML = '<div class="alert alert-err">' + esc(e.message) + '</div>'; });
+      '<div id="err"></div>' +
+      '<button class="btn btn-primary btn-block" id="go" style="margin-top:16px" disabled>' + I.check + 'Analyze & save attendance</button></div></div>');
 
     var facing = 'environment';
     function drawShots() {
@@ -919,26 +972,38 @@
     drawShots();
 
     $('#go').onclick = function () {
-      var cls = tpick ? tpick.value() : '', date = $('#date').value;
-      if (!cls) { toast('Choose year, stream and section', true); return; }
-      if (!date) { toast('Choose a date', true); return; }
       var btn = $('#go'); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Recognising faces… (10–40 s)';
-      var qs = '?attendance_date=' + encodeURIComponent(date) + '&confirm_review=true';
+      $('#err').innerHTML = '';
+      var q2 = '?attendance_date=' + encodeURIComponent(date) + '&confirm_review=true';
       var req;
       if (photos.length === 1) {
-        req = api('/attendance/mark-from-recognition/' + encodeURIComponent(cls) + qs, { method: 'POST', form: blobForm(photos[0].blob, photos[0].name) });
+        req = api('/attendance/mark-from-recognition/' + encodeURIComponent(cls) + q2, { method: 'POST', form: blobForm(photos[0].blob, photos[0].name) });
       } else {
         var f = new FormData();
         photos.forEach(function (p) { f.append('files', p.blob, p.name); });
-        req = api('/attendance/mark-from-rows/' + encodeURIComponent(cls) + qs, { method: 'POST', form: f });
+        req = api('/attendance/mark-from-rows/' + encodeURIComponent(cls) + q2, { method: 'POST', form: f });
       }
       Promise.all([req, api('/admin/students')]).then(function (r) {
-        showResult(r[0], cls, date, r[1].students.filter(function (s) { return s.class_name === cls; }));
+        lastTake = { res: r[0], cls: cls, date: date, roster: r[1].students.filter(function (s) { return s.class_name === cls; }) };
         stopCamera();
+        location.hash = '#/attendance/take/result' + qs({ 'class': cls, date: date });
       }).catch(function (e) {
-        $('#result').innerHTML = '<div class="alert alert-err">' + esc(e.message) + '</div>';
-      }).then(function () { drawShots(); });
+        $('#err').innerHTML = '<div class="alert alert-err" style="margin-top:14px">' + esc(e.message) + '</div>';
+        drawShots();
+      });
     };
+  }
+
+  // Take Attendance, page 3: result
+  function pageTakeResult() {
+    var q = query();
+    if (!lastTake || lastTake.cls !== q['class'] || lastTake.date !== q.date) {
+      location.hash = q['class'] && q.date ? '#/attendance/records/view' + qs({ 'class': q['class'], date: q.date }) : '#/attendance/take';
+      return;
+    }
+    mount('take', pageHead('Attendance Saved', 'Step 3 of 3 · Check who was marked present', '#/attendance/take/photo' + qs({ 'class': lastTake.cls, date: lastTake.date })) +
+      stepsBar(3, TAKE_STEPS) + '<div id="result"></div>');
+    showResult(lastTake.res, lastTake.cls, lastTake.date, lastTake.roster);
   }
 
   function showResult(res, cls, date, roster) {
@@ -954,9 +1019,9 @@
       [rec.unknown_faces || 0, 'Unknown faces'],
       [rec.duplicate_matches || 0, 'Duplicates']
     ];
-    $('#result').innerHTML = '<div class="panel"><div class="page-head" style="margin-bottom:6px"><div><h2 class="page-title" style="font-size:22px">Attendance saved</h2>' +
-      '<div class="page-sub">' + esc(classLabel(cls)) + ' · ' + fmtDate(date) + (rec.model ? ' · model ' + esc(rec.model) : '') + '</div></div>' +
-      '<div class="page-actions"><a class="btn btn-primary" href="#/attendance/records?class=' + encodeURIComponent(cls) + '&date=' + date + '">Review & correct</a></div></div>' +
+    $('#result').innerHTML = '<div class="panel"><div class="page-head" style="margin-bottom:6px"><div><h2 class="page-title" style="font-size:22px">' + esc(classLabel(cls)) + '</h2>' +
+      '<div class="page-sub">' + fmtDate(date) + (rec.model ? ' · model ' + esc(rec.model) : '') + '</div></div>' +
+      '<div class="page-actions"><a class="btn btn-ghost" href="#/attendance/take">Take another</a><a class="btn btn-primary" href="#/attendance/records/view' + qs({ 'class': cls, date: date }) + '">Review & correct</a></div></div>' +
       (flags.length ? '<div class="alert alert-warn">Please review: ' + esc(flags.join(' · ')) + '</div>' : '<div class="alert alert-ok">' + I.check.replace('<svg', '<svg width="18" height="18"') + ' All faces matched enrolled students.</div>') +
       '<div class="result-stats">' + stats.map(function (s) { return '<div class="mini"><div class="v">' + esc(s[0]) + '</div><div class="l">' + s[1] + '</div></div>'; }).join('') + '</div>' +
       '<div class="grid2" style="grid-template-columns:1fr 1fr"><div><h3 style="margin-bottom:10px">Present (' + present.length + ')</h3><div class="table-wrap"><table><tbody>' +
@@ -969,17 +1034,20 @@
       (absent.length ? absent.map(function (s) {
         return '<tr><td><div class="who"><span class="avatar">' + esc(initials(s.name)) + '</span><div><div style="font-weight:600">' + esc(s.name) + '</div><div class="mono">' + esc(s.student_id) + '</div></div></div></td><td style="text-align:right"><span class="pill pill-red">Absent</span></td></tr>';
       }).join('') : '<tr><td class="empty">Everyone is present</td></tr>') + '</tbody></table></div></div></div></div>';
-    $('#result').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  // Records, page 1: class + date
   function pageRecords() {
     var q = query();
-    mount('records', pageHead('Attendance Records', 'View saved attendance and correct mistakes within ' + CONFIG.editWindowMinutes + ' minutes', '#/dashboard') +
-      '<div class="toolbar"><div id="rpick-wrap">' + loadingHtml() + '</div><select id="dates" class="select"></select>' +
-      '<input id="date" type="date" class="input" value="' + (q.date || '') + '" title="Or pick any date" /></div>' +
-      '<div id="list"></div>');
-
+    mount('records', pageHead('Attendance Records', 'Step 1 of 2 · Choose the class and date', '#/dashboard') + stepsBar(1, REC_STEPS) +
+      '<div class="panel narrow"><h3>Class & date</h3><div class="hint">Pick a class, then one of the dates that has saved attendance.</div>' +
+      '<div id="rpick-wrap">' + loadingHtml() + '</div>' +
+      '<div class="row"><div class="field"><label for="dates">Saved dates</label><select id="dates" class="select"><option value="">Choose a class first</option></select></div>' +
+      '<div class="field"><label for="date">Or any date</label><input id="date" type="date" class="input" value="' + esc(q.date || '') + '" /></div></div>' +
+      '<div class="row" style="justify-content:flex-end"><a class="btn btn-ghost" href="#/dashboard">Cancel</a>' +
+      '<button class="btn btn-primary" id="next">View records ' + L.arrow.replace('<svg', '<svg width="18" height="18"') + '</button></div></div>');
     function loadDates(cls, pick) {
+      $('#dates').innerHTML = '<option value="">Loading…</option>';
       return api('/admin/attendance-dates/' + encodeURIComponent(cls)).then(function (d) {
         $('#dates').innerHTML = d.dates.length
           ? d.dates.map(function (x) { return '<option value="' + x.date + '">' + fmtDate(x.date) + ' — ' + x.present + '/' + x.total + ' present</option>'; }).join('')
@@ -987,14 +1055,38 @@
         var date = pick || (d.dates[0] && d.dates[0].date) || '';
         if (date && d.dates.some(function (x) { return x.date === date; })) $('#dates').value = date;
         $('#date').value = date;
-        load();
-      });
+      }).catch(function (e) { toast(e.message, true); });
     }
-    function load() {
+    var rpick = null;
+    api('/admin/classes').then(function (d) {
+      $('#rpick-wrap').innerHTML = pickerHtml('rpick');
+      rpick = bindPicker('rpick', d.classes.map(function (c) { return c.class_name; }), {
+        selected: q['class'],
+        onChange: function (v) { if (v) loadDates(v); else { $('#dates').innerHTML = '<option value="">Choose a class first</option>'; $('#date').value = ''; } }
+      });
+      if (rpick.value()) loadDates(rpick.value(), q.date);
+    }).catch(function (e) { toast(e.message, true); });
+    $('#dates').onchange = function () { $('#date').value = $('#dates').value; };
+    $('#next').onclick = function () {
       var cls = rpick ? rpick.value() : '', date = $('#date').value;
-      if (!cls || !date) { $('#list').innerHTML = '<div class="panel">' + emptyHtml('Choose a class and a date.', 'records') + '</div>'; return; }
-      $('#list').innerHTML = loadingHtml();
+      if (!cls) { toast('Choose year, stream and section', true); return; }
+      if (!date) { toast('Choose a date', true); return; }
+      location.hash = '#/attendance/records/view' + qs({ 'class': cls, date: date });
+    };
+  }
+
+  // Records, page 2: the list with corrections
+  function pageRecordsView() {
+    var q = query(), cls = q['class'], date = q.date;
+    if (!cls || !date) { location.hash = '#/attendance/records'; return; }
+    var back = '#/attendance/records' + qs({ 'class': cls, date: date });
+    mount('records', pageHead('Records', 'Step 2 of 2 · Correct mistakes within ' + CONFIG.editWindowMinutes + ' minutes', back) + stepsBar(2, REC_STEPS) +
+      sessionStrip(cls, date, back) + '<div id="list" style="margin-top:18px">' + loadingHtml() + '</div>');
+    var box = $('#list');
+    function gone() { return !document.body.contains(box); }
+    function load() {
       api('/attendance/' + encodeURIComponent(cls) + '/' + date).then(function (d) {
+        if (gone()) return;
         if (!d.records.length) { $('#list').innerHTML = '<div class="panel">' + emptyHtml('No attendance saved for ' + esc(classLabel(cls)) + ' on ' + fmtDate(date) + '.', 'records') + '</div>'; return; }
         var marked = d.records.map(function (r) { return r.marked_at; }).filter(Boolean).sort()[0];
         var deadline = marked ? new Date(new Date(marked).getTime() + CONFIG.editWindowMinutes * 60000) : null;
@@ -1018,24 +1110,14 @@
               if (!reason) return;
               api('/attendance/correct/' + encodeURIComponent(sid) + '?class_name=' + encodeURIComponent(cls) + '&attendance_date=' + date,
                 { method: 'PATCH', json: { new_status: to, edited_by: session.name, reason: reason } })
-                .then(function () { toast('Correction saved'); loadDates(cls, date); })
+                .then(function () { toast('Correction saved'); load(); })
                 .catch(function (e) { toast(e.message, true); });
             });
           };
         });
-      }).catch(function (e) { $('#list').innerHTML = '<div class="alert alert-err">' + esc(e.message) + '</div>'; });
+      }).catch(function (e) { if (gone()) return; $('#list').innerHTML = '<div class="alert alert-err">' + esc(e.message) + '</div>'; });
     }
-    var rpick = null;
-    api('/admin/classes').then(function (d) {
-      $('#rpick-wrap').innerHTML = pickerHtml('rpick', true);
-      rpick = bindPicker('rpick', d.classes.map(function (c) { return c.class_name; }), {
-        selected: q['class'],
-        onChange: function (v) { if (v) loadDates(v); else { $('#dates').innerHTML = ''; $('#date').value = ''; load(); } }
-      });
-      if (rpick.value()) loadDates(rpick.value(), q.date); else load();
-    }).catch(function (e) { toast(e.message, true); });
-    $('#dates').onchange = function () { $('#date').value = $('#dates').value; load(); };
-    $('#date').onchange = load;
+    load();
   }
 
   function pageAudit() {
@@ -1064,28 +1146,31 @@
     $('#stu').onchange = load;
   }
 
+  // Users, page 1: accounts grouped by role
   function pageUsers() {
-    mount('users', pageHead('Users', 'Accounts that can sign in to FACE ID', '#/dashboard') +
-      '<div class="grid2"><div class="panel"><h3>Add an account</h3><div class="hint">Give the person their username and this first password. They can change it under My Account.</div>' +
-      '<form id="new-user" autocomplete="off"><div class="field"><label for="nu-name">Full name</label><input id="nu-name" class="input" required /></div>' +
-      '<div class="field"><label for="nu-user">Username</label><input id="nu-user" class="input" placeholder="e.g. ravi.k" autocapitalize="none" required /></div>' +
-      '<div class="field"><label for="nu-role">Role</label><select id="nu-role" class="select"><option value="lecturer">Lecturer — take attendance, view records</option><option value="admin">Admin — everything</option></select></div>' +
-      '<div class="field"><label for="nu-pass">First password</label><input id="nu-pass" class="input" placeholder="At least 8 characters" required /></div>' +
-      '<button class="btn btn-primary btn-block" type="submit">' + I.plus + 'Create account</button></form></div>' +
-      '<div><div id="list">' + loadingHtml() + '</div></div></div>');
+    mount('users', pageHead('Users', 'Admin, professor / lecturer and student accounts', '#/dashboard',
+      '<a class="btn btn-primary" href="#/users/new">' + I.plus + 'Add account</a>') +
+      '<div id="list">' + loadingHtml() + '</div>');
 
+    function row(u) {
+      var me = u.username === session.username;
+      return '<tr><td><div class="who"><span class="avatar">' + esc(initials(u.name)) + '</span><div><div style="font-weight:600">' + esc(u.name) + (me ? ' <span class="pill pill-grey">You</span>' : '') + '</div>' +
+        '<div class="mono">' + esc(u.username) + (u.student_id ? ' · ' + esc(u.student_id) : '') + '</div></div></div></td>' +
+        '<td class="hide-sm">' + roleBadge(u.role) + '</td>' +
+        '<td>' + (u.active ? '<span class="pill pill-green">Active</span>' : '<span class="pill pill-grey">Deactivated</span>') + '</td>' +
+        '<td><div class="actions"><button class="btn btn-ghost btn-sm" data-reset="' + u.id + '" data-name="' + esc(u.name) + '">Reset password</button>' +
+        (me ? '' : '<button class="btn ' + (u.active ? 'btn-danger' : 'btn-ghost') + ' btn-sm" data-active="' + u.id + '" data-to="' + (!u.active) + '" data-name="' + esc(u.name) + '">' + (u.active ? 'Deactivate' : 'Activate') + '</button>') +
+        '</div></td></tr>';
+    }
     function load() {
       api('/admin/users').then(function (d) {
-        $('#list').innerHTML = '<div class="table-wrap"><table><thead><tr><th>Account</th><th>Role</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead><tbody>' +
-          d.users.map(function (u) {
-            var me = u.username === session.username;
-            return '<tr><td><div class="who"><span class="avatar">' + esc(initials(u.name)) + '</span><div><div style="font-weight:600">' + esc(u.name) + (me ? ' <span class="pill pill-grey">You</span>' : '') + '</div><div class="mono">' + esc(u.username) + '</div></div></div></td>' +
-              '<td style="text-transform:capitalize">' + esc(u.role) + '</td>' +
-              '<td>' + (u.active ? '<span class="pill pill-green">Active</span>' : '<span class="pill pill-grey">Deactivated</span>') + '</td>' +
-              '<td><div class="actions"><button class="btn btn-ghost btn-sm" data-reset="' + u.id + '" data-name="' + esc(u.name) + '">Reset password</button>' +
-              (me ? '' : '<button class="btn ' + (u.active ? 'btn-danger' : 'btn-ghost') + ' btn-sm" data-active="' + u.id + '" data-to="' + (!u.active) + '" data-name="' + esc(u.name) + '">' + (u.active ? 'Deactivate' : 'Activate') + '</button>') +
-              '</div></td></tr>';
-          }).join('') + '</tbody></table></div>';
+        $('#list').innerHTML = ROLE_ORDER.map(function (r) {
+          var g = d.users.filter(function (u) { return u.role === r; });
+          return '<div class="section-title"><h2>' + esc(ROLES[r].group) + '</h2><span class="count-pill">' + plural(g.length, 'account') + '</span>' +
+            '<a class="btn btn-ghost btn-sm" style="margin-left:auto" href="#/users/new?role=' + r + '">' + I.plus + 'Add<span class="hide-sm"> ' + esc(ROLES[r].one.toLowerCase()) + '</span></a></div>' +
+            (g.length ? '<div class="table-wrap" style="margin-bottom:26px"><table><thead><tr><th>Account</th><th class="hide-sm">Role</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead><tbody>' + g.map(row).join('') + '</tbody></table></div>'
+              : '<div class="panel" style="margin-bottom:26px">' + emptyHtml('No ' + esc(ROLES[r].group.toLowerCase()) + ' accounts yet.', 'usersAdmin') + '</div>');
+        }).join('');
         $all('[data-reset]').forEach(function (b) {
           b.onclick = function () {
             modal({ title: 'Reset password for ' + b.getAttribute('data-name'), text: 'Tell them the new password; they can change it later.', input: 'New password (at least 8 characters)', ok: 'Reset password' }).then(function (pw) {
@@ -1107,30 +1192,123 @@
         });
       }).catch(function (e) { $('#list').innerHTML = '<div class="alert alert-err">' + esc(e.message) + '</div>'; });
     }
-    $('#new-user').onsubmit = function (e) {
-      e.preventDefault();
-      api('/admin/users', { method: 'POST', json: { name: $('#nu-name').value.trim(), username: $('#nu-user').value.trim(), role: $('#nu-role').value, password: $('#nu-pass').value } })
-        .then(function (r) { toast(r.message); $('#new-user').reset(); load(); })
-        .catch(function (err) { toast(err.message, true); });
-    };
     load();
   }
 
+  // Users, page 2: add an account
+  function pageUserNew() {
+    var q = query();
+    var role0 = ROLES[q.role] ? q.role : 'lecturer';
+    mount('users', pageHead('Add Account', 'Create a sign-in for an admin, professor / lecturer or student', '#/users') +
+      '<div class="panel narrow"><h3>Who is this account for?</h3>' +
+      '<div class="role-cards">' + ROLE_ORDER.map(function (r) {
+        var d = { admin: 'Everything: students, faces, accounts, records', lecturer: 'Takes attendance and views records', student: 'Sees only their own attendance' }[r];
+        return '<label class="role-card"><input type="radio" name="nu-role" value="' + r + '"' + (r === role0 ? ' checked' : '') + ' />' +
+          '<span class="rc-top">' + roleBadge(r) + '</span><span class="rc-name">' + esc(ROLES[r].one) + '</span><span class="rc-desc">' + d + '</span></label>';
+      }).join('') + '</div>' +
+      '<form id="new-user" autocomplete="off">' +
+      '<div class="field hidden" id="nu-sid-wrap"><label for="nu-sid">Which student?</label><select id="nu-sid" class="select"><option value="">Loading students…</option></select>' +
+        '<div class="hint" style="margin-top:6px">Add the student first (Add Student). One login per student.</div></div>' +
+      '<div class="row"><div class="field"><label for="nu-name">Full name</label><input id="nu-name" class="input" required /></div>' +
+      '<div class="field"><label for="nu-user">Username</label><input id="nu-user" class="input" placeholder="e.g. ravi.k" autocapitalize="none" required /></div></div>' +
+      '<div class="field"><label for="nu-pass">First password</label><input id="nu-pass" class="input" placeholder="At least 8 characters" required /></div>' +
+      '<div class="hint">Give the person their username and this first password. They can change it under My Account.</div>' +
+      '<div class="row" style="justify-content:flex-end"><a class="btn btn-ghost" href="#/users">Cancel</a>' +
+      '<button class="btn btn-primary" type="submit">' + I.plus + 'Create account</button></div></form></div>');
+
+    function role() { var c = document.querySelector('input[name="nu-role"]:checked'); return c ? c.value : 'lecturer'; }
+    function showSid() { $('#nu-sid-wrap').classList.toggle('hidden', role() !== 'student'); }
+    $all('input[name="nu-role"]').forEach(function (r) { r.onchange = showSid; });
+    var byId = {};
+    $('#nu-sid').onchange = function () {
+      var st = byId[$('#nu-sid').value];
+      if (!st) return;
+      $('#nu-name').value = st.name;
+      if (!$('#nu-user').value.trim()) $('#nu-user').value = st.student_id.toLowerCase().replace(/[^a-z0-9._-]/g, '');
+    };
+    api('/admin/students').then(function (d) {
+      d.students.forEach(function (st) { byId[st.student_id] = st; });
+      $('#nu-sid').innerHTML = d.students.length
+        ? '<option value="">Choose a student…</option>' + d.students.map(function (st) {
+            return '<option value="' + esc(st.student_id) + '">' + esc(st.name) + ' · ' + esc(st.student_id) + ' · ' + esc(classShort(st.class_name)) + '</option>';
+          }).join('')
+        : '<option value="">No students yet — add one first</option>';
+    }).catch(function () { $('#nu-sid').innerHTML = '<option value="">Could not load students</option>'; });
+    showSid();
+
+    $('#new-user').onsubmit = function (e) {
+      e.preventDefault();
+      var r = role();
+      if (r === 'student' && !$('#nu-sid').value) { toast('Choose which student this login is for', true); return; }
+      api('/admin/users', { method: 'POST', json: { name: $('#nu-name').value.trim(), username: $('#nu-user').value.trim(), role: r, password: $('#nu-pass').value, student_id: r === 'student' ? $('#nu-sid').value : null } })
+        .then(function (res) { toast(res.message); location.hash = '#/users'; })
+        .catch(function (err) { toast(err.message, true); });
+    };
+  }
+
+  // Student home: their own attendance
+  function pageMyAttendance() {
+    var first = session.name.split(' ')[0];
+    mount('myatt',
+      '<section class="banner"><div class="banner-text"><div class="banner-meta"><span class="chip chip-role">STUDENT</span>• ' + esc(CONFIG.college) + '</div>' +
+      '<h1>' + greeting() + ', <em>' + esc(first) + '</em></h1><div class="banner-sub" id="me-class">' + esc(CONFIG.campus) + '</div>' +
+      '<div class="banner-desc">Your attendance, marked by face recognition in class.</div></div>' +
+      '<div class="banner-card"><span class="avatar">' + esc(initials(session.name)) + '</span><div><div class="user-name">' + esc(session.name) + '</div><div style="color:#f2d9d9;font-size:13px">' + esc(session.student_id || session.username) + '</div></div></div></section>' +
+      '<div class="stats" id="stats">' + loadingHtml('Loading your attendance…') + '</div>' +
+      '<div class="section-title"><h2>Attendance history</h2><span class="count-pill" id="me-count">—</span></div>' +
+      '<div id="list"></div>');
+    api('/me/attendance').then(function (d) {
+      $('#me-class').textContent = classLabel(d.student.class_name);
+      var pct = d.total ? Math.round(100 * d.present / d.total) + '%' : '—';
+      var cards = [
+        ['take', '#e8f7ef', d.present, 'Days present'],
+        ['records', '#fdecec', d.total - d.present, 'Days absent'],
+        ['classes', '#eef3ff', d.total, 'Days recorded'],
+        ['dashboard', '#fff4e5', pct, 'Attendance']
+      ];
+      $('#stats').innerHTML = cards.map(function (c) {
+        return '<div class="stat"><div class="stat-icon" style="background:' + c[1] + '">' + I[c[0]] + '</div><div><div class="stat-value">' + esc(c[2]) + '</div><div class="stat-label">' + c[3] + '</div></div></div>';
+      }).join('');
+      $('#me-count').textContent = plural(d.total, 'day');
+      $('#list').innerHTML = d.records.length
+        ? '<div class="table-wrap"><table><thead><tr><th>Date</th><th class="hide-sm">Class</th><th>Status</th><th class="hide-sm">Marked at</th></tr></thead><tbody>' +
+          d.records.map(function (r) {
+            return '<tr><td style="font-weight:600">' + fmtDate(r.date) + '</td><td class="hide-sm">' + esc(classShort(r.class_name)) + '</td>' +
+              '<td><span class="pill ' + (r.status === 'Present' ? 'pill-green' : 'pill-red') + '">' + esc(r.status) + '</span></td><td class="hide-sm mono">' + fmtTime(r.marked_at) + '</td></tr>';
+          }).join('') + '</tbody></table></div>'
+        : '<div class="panel">' + emptyHtml('No attendance has been taken for you yet.', 'records') + '</div>';
+    }).catch(function (e) {
+      $('#stats').innerHTML = '';
+      $('#list').innerHTML = '<div class="alert alert-err">' + esc(e.message) + '</div>';
+    });
+  }
+
+  // My Account, page 1: profile
   function pageAccount() {
-    mount('account', pageHead('My Account', 'Your sign-in details', '#/dashboard') +
-      '<div class="grid2"><div class="panel"><h3>Profile</h3><div class="hint">Ask an admin to change your name or role.</div>' +
-      '<div class="who" style="display:flex;gap:14px;align-items:center"><span class="avatar" style="width:56px;height:56px;font-size:18px">' + esc(initials(session.name)) + '</span>' +
-      '<div><div style="font-weight:700;font-size:18px">' + esc(session.name) + '</div><div class="mono">' + esc(session.username) + '</div><span class="role-pill" style="display:inline-block;margin-top:6px">' + esc(session.role) + '</span></div></div></div>' +
-      '<div class="panel"><h3>Change password</h3><div class="hint">At least 8 characters.</div><form id="pw-form">' +
+    var home = session.role === 'student' ? '#/me' : '#/dashboard';
+    mount('account', pageHead('My Account', 'Your sign-in details', home) +
+      '<div class="panel narrow"><div class="who" style="display:flex;gap:16px;align-items:center"><span class="avatar" style="width:64px;height:64px;font-size:20px">' + esc(initials(session.name)) + '</span>' +
+      '<div><div style="font-weight:800;font-size:20px">' + esc(session.name) + '</div><div class="mono">' + esc(session.username) + (session.student_id ? ' · ' + esc(session.student_id) : '') + '</div>' +
+      '<div style="margin-top:8px">' + roleBadge(session.role) + '</div></div></div>' +
+      '<div class="hint" style="margin-top:16px">Ask an admin to change your name or role.</div>' +
+      '<div class="row" style="justify-content:flex-end"><button class="btn btn-ghost" id="acc-out">' + I.logout.replace('<svg', '<svg width="18" height="18"') + 'Sign out</button>' +
+      '<a class="btn btn-primary" href="#/account/password">' + I.lock + 'Change password</a></div></div>');
+    $('#acc-out').onclick = function () { signOut(); };
+  }
+
+  // My Account, page 2: change password
+  function pagePassword() {
+    mount('account', pageHead('Change Password', 'At least 8 characters', '#/account') +
+      '<div class="panel narrow"><form id="pw-form">' +
       '<div class="field"><label for="cur">Current password</label><input id="cur" type="password" class="input" autocomplete="current-password" required /></div>' +
       '<div class="field"><label for="np">New password</label><input id="np" type="password" class="input" autocomplete="new-password" required /></div>' +
       '<div class="field"><label for="np2">Confirm new password</label><input id="np2" type="password" class="input" autocomplete="new-password" required /></div>' +
-      '<button class="btn btn-primary btn-block" type="submit">Change password</button></form></div></div>');
+      '<div class="row" style="justify-content:flex-end"><a class="btn btn-ghost" href="#/account">Cancel</a><button class="btn btn-primary" type="submit">Change password</button></div></form></div>');
     $('#pw-form').onsubmit = function (e) {
       e.preventDefault();
       if ($('#np').value !== $('#np2').value) { toast('New passwords do not match', true); return; }
       api('/auth/change-password', { method: 'POST', json: { current_password: $('#cur').value, new_password: $('#np').value } })
-        .then(function () { toast('Password changed'); $('#pw-form').reset(); })
+        .then(function () { toast('Password changed'); location.hash = '#/account'; })
         .catch(function (err) { toast(err.message, true); });
     };
   }
@@ -1141,14 +1319,23 @@
     var path = (location.hash.replace(/^#/, '').split('?')[0]) || '/';
     $('#modal-root').innerHTML = '';
     if (!session) { if (path !== '/login') { location.hash = '#/login'; return; } return pageLogin(); }
-    if (path === '/login' || path === '/') { location.hash = '#/dashboard'; return; }
+    if (path === '/login' || path === '/') { location.hash = session.role === 'student' ? '#/me' : '#/dashboard'; return; }
+    if (path === '/account') return pageAccount();
+    if (path === '/account/password') return pagePassword();
+    if (session.role === 'student') {
+      if (path === '/me') return pageMyAttendance();
+      location.hash = '#/me'; return;
+    }
     var admin = session.role === 'admin', m;
     if (path === '/dashboard') return pageDashboard();
     if (path === '/classes') return pageClasses();
     if ((m = path.match(/^\/classes\/y\/(1PU|2PU|LT|OTHER)(?:\/(PCMB|PCMCS))?$/))) return pageClasses(m[1], m[2]);
     if ((m = path.match(/^\/classes\/(.+)$/))) return pageClass(decodeURIComponent(m[1]));
     if (path === '/attendance/take') return pageTake();
+    if (path === '/attendance/take/photo') return pageTakePhoto();
+    if (path === '/attendance/take/result') return pageTakeResult();
     if (path === '/attendance/records') return pageRecords();
+    if (path === '/attendance/records/view') return pageRecordsView();
     if (admin && path === '/students') return pageStudents();
     if (admin && (m = path.match(/^\/students\/y\/(1PU|2PU|LT|OTHER)(?:\/(PCMB|PCMCS))?$/))) return pageStudents(m[1], m[2]);
     if (admin && (m = path.match(/^\/students\/(.+)\/edit$/))) return pageEdit(decodeURIComponent(m[1]));
@@ -1156,7 +1343,7 @@
     if (admin && (m = path.match(/^\/students\/(.+)\/face$/))) return pageEnroll(decodeURIComponent(m[1]));
     if (admin && path === '/audit') return pageAudit();
     if (admin && path === '/users') return pageUsers();
-    if (path === '/account') return pageAccount();
+    if (admin && path === '/users/new') return pageUserNew();
     location.hash = '#/dashboard';
   }
   window.addEventListener('hashchange', route);
