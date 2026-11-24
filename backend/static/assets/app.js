@@ -619,7 +619,7 @@
   // Edit a student's name or class (year / stream / section)
   function pageEdit(id) {
     mount('students', pageHead('Edit Student', '<span id="ed-sub">' + esc(id) + '</span>', '#/students') +
-      '<div class="panel" style="max-width:760px"><h3>Student details</h3><div class="hint">Changing the class moves the student\'s attendance history with them.</div>' +
+      '<div class="panel"><h3>Student details</h3><div class="hint">Changing the class moves the student\'s attendance history with them.</div>' +
       '<div class="field"><label for="ename">Full name</label><input id="ename" class="input" /></div>' +
       '<div id="epick-wrap">' + loadingHtml() + '</div>' +
       '<div class="row" style="margin-top:8px"><button class="btn btn-primary" id="esave">' + I.check + 'Save changes</button><a class="btn btn-ghost" id="ecancel" href="#/students">Cancel</a></div></div>');
@@ -663,7 +663,7 @@
   function pageAddStudent() {
     var q = query();
     mount('enroll', pageHead('Add Student', 'Step 1 of 2 · Enter the student\'s details', '#/students') + stepsBar(1) +
-      '<div class="panel" style="max-width:820px"><h3>Student details</h3><div class="hint">Use the roll number as the Student ID. Next, you will capture the student\'s face.</div>' +
+      '<div class="panel"><h3>Student details</h3><div class="hint">Use the roll number as the Student ID. Next, you will capture the student\'s face.</div>' +
       '<div class="row"><div class="field"><label for="sid">Student ID / Roll number</label><input id="sid" class="input" placeholder="e.g. 26PU1001" /></div>' +
       '<div class="field"><label for="sname">Full name</label><input id="sname" class="input" placeholder="Student name" /></div></div>' +
       '<div id="pick-wrap">' + loadingHtml() + '</div>' +

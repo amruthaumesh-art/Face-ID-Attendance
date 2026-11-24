@@ -478,3 +478,9 @@ button.user-chip:hover { background: rgba(255,255,255,.14); }
 }
 @media (max-width: 860px) { .take-grid > .panel:first-child { order: 2; } }
 .role-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; color: var(--muted); font-size: 14px; }
+
+/* v8: use the full screen width on every page */
+.main { max-width: none; }
+.steps, .panel.narrow, .session-strip { max-width: none; }
+.toast { opacity: 0; visibility: hidden; transition: transform .25s, opacity .2s, visibility 0s .25s; }
+.toast.show { opacity: 1; visibility: visible; transition: transform .25s, opacity .2s; }
